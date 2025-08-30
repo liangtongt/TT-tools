@@ -32,6 +32,7 @@ class TTImg:
     RETURN_NAMES = ("image",)
     FUNCTION = "compress_sequence"
     CATEGORY = "TT"
+    OUTPUT_NODE = True  # 启用节点预览功能
     
     def compress_sequence(self, images, quality, use_original_size):
         """将图片序列压缩并嵌入到自动生成的承载图像中"""
@@ -139,6 +140,9 @@ class TTImg:
                 min_h = min(final_tensor.shape[2], final_array.shape[1])
                 min_w = min(final_tensor.shape[3], final_array.shape[2])
                 final_tensor[0, :, :min_h, :min_w] = torch.from_numpy(final_array[:, :min_h, :min_w])
+        
+        # 生成预览图像（缩略图）
+        preview_image = self._create_preview_image(final_image)
         
         return (final_tensor,)
     
@@ -320,5 +324,55 @@ class TTImg:
             draw.point((x, y), fill=color)
         
         return img
+    
+    def _create_preview_image(self, image):
+        """创建预览图像（缩略图）"""
+        try:
+            # 创建缩略图
+            preview_size = (256, 256)  # 预览尺寸
+            preview_image = image.copy()
+            preview_image.thumbnail(preview_size, Image.Resampling.LANCZOS)
+            
+            # 添加边框和标题
+            from PIL import ImageDraw, ImageFont
+            
+            # 创建带边框的图像
+            border_size = 2
+            bordered_size = (preview_image.width + border_size * 2, 
+                           preview_image.height + border_size * 2 + 30)  # 额外30像素用于标题
+            bordered_image = Image.new('RGB', bordered_size, (200, 200, 200))
+            
+            # 粘贴预览图像
+            bordered_image.paste(preview_image, (border_size, border_size))
+            
+            # 添加标题
+            draw = ImageDraw.Draw(bordered_image)
+            try:
+                # 尝试使用系统字体
+                font = ImageFont.truetype("arial.ttf", 12)
+            except:
+                # 使用默认字体
+                font = ImageFont.load_default()
+            
+            title = "TT img Preview"
+            title_bbox = draw.textbbox((0, 0), title, font=font)
+            title_width = title_bbox[2] - title_bbox[0]
+            title_x = (bordered_image.width - title_width) // 2
+            title_y = preview_image.height + border_size + 5
+            
+            # 绘制标题背景
+            draw.rectangle([title_x - 5, title_y - 2, 
+                           title_x + title_width + 5, title_y + 15], 
+                          fill=(100, 100, 100))
+            
+            # 绘制标题文字
+            draw.text((title_x, title_y), title, fill=(255, 255, 255), font=font)
+            
+            return bordered_image
+            
+        except Exception as e:
+            print(f"预览图像创建失败: {e}")
+            # 如果预览创建失败，返回原图像
+            return image
 
 # 节点注册已移至 __init__.py
