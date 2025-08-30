@@ -49,8 +49,25 @@ pip install git+https://github.com/tttools/tt-img-enc.git
 2. 调整其他参数（可选）
 3. 运行工作流
 4. 下载输出的造点图片
-5. 将图片后缀改为 `.zip`
-6. 解压 ZIP 文件获得原始 MP4 或 JPG 文件
+5. 使用提取工具获得隐藏的ZIP文件
+
+### ZIP文件提取
+
+**方法1：使用Python脚本（推荐）**
+```bash
+python extract_zip.py <图片路径>
+```
+
+**方法2：指定输出路径**
+```bash
+python extract_zip.py <图片路径> <输出ZIP路径>
+```
+
+**示例：**
+```bash
+python extract_zip.py output_image.png
+python extract_zip.py output_image.png my_video.zip
+```
 
 ## 技术原理
 
@@ -75,11 +92,12 @@ pip install git+https://github.com/tttools/tt-img-enc.git
 
 ## 注意事项
 
-1. **图片尺寸**：输出图片尺寸根据文件大小动态调整（512x512 到 2048x2048）
+1. **图片尺寸**：输出图片固定为 512x512 像素，确保兼容性
 2. **输出数量**：无论输入多少张图片，都只输出一张造点图片
-3. **文件大小限制**：支持最大约1.5MB的文件（2048x2048图片）
+3. **文件大小限制**：支持最大约96KB的文件（512x512图片）
 4. **临时文件**：处理过程中会创建临时文件，完成后自动清理
 5. **错误处理**：如果处理失败，会输出错误提示图片
+6. **ZIP提取**：必须使用提供的提取工具，不能直接改后缀名
 
 ## 示例工作流
 
@@ -111,6 +129,7 @@ Load Image → TT img enc → Save Image
 
 ## 更新日志
 
+- v1.0.4: 修复ZIP提取问题，提供专用提取工具，确保数据完整性
 - v1.0.3: 修复存储容量问题，支持大文件（如21帧视频），动态图片尺寸
 - v1.0.2: 修复torch张量输入处理问题，自动转换ComfyUI输入格式
 - v1.0.1: 修复torch兼容性和输出格式问题，确保只输出一张图片

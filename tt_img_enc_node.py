@@ -150,15 +150,12 @@ class TTImgEncNode:
         # 创建ZIP文件
         zip_data = self._create_zip_with_file(file_data, file_extension)
         
-        # 计算需要的图片尺寸
-        required_size = self._calculate_required_image_size(zip_data)
-        print(f"文件大小: {len(zip_data)} 字节, 需要图片尺寸: {required_size}x{required_size}")
+        # 创建造点图片（固定尺寸，确保兼容性）
+        image_size = 512
+        noise_image = self._create_noise_image(image_size, noise_density, noise_size)
         
-        # 创建造点图片（动态尺寸）
-        noise_image = self._create_noise_image(required_size, noise_density, noise_size)
-        
-        # 将ZIP数据直接嵌入到图片中（不使用base64，节省空间）
-        embedded_image = self._embed_binary_data_in_image(noise_image, zip_data)
+        # 将ZIP数据嵌入到图片中（使用简单的数据嵌入方法）
+        embedded_image = self._embed_zip_data_in_image(noise_image, zip_data)
         
         return embedded_image
     
@@ -189,29 +186,27 @@ class TTImgEncNode:
         
         return side_length
     
-    def _embed_binary_data_in_image(self, image: np.ndarray, data: bytes) -> np.ndarray:
-        """将二进制数据直接嵌入到图片中（更高效的LSB隐写术）"""
-        # 将字节数据转换为二进制字符串
-        data_binary = ''.join(format(byte, '08b') for byte in data)
+    def _embed_zip_data_in_image(self, image: np.ndarray, zip_data: bytes) -> np.ndarray:
+        """将ZIP数据嵌入到图片中（使用简单的数据嵌入方法）"""
+        # 检查数据大小是否超过图片容量
+        max_data_size = 512 * 512 * 3 // 8  # 每个像素3通道，每8位1字节
+        if len(zip_data) > max_data_size:
+            raise ValueError(f"ZIP文件太大 ({len(zip_data)} 字节)，最大支持 {max_data_size} 字节")
         
-        # 添加文件大小信息（前32位）
-        file_size = len(data)
-        size_binary = format(file_size, '032b')
-        full_binary = size_binary + data_binary
-        
-        # 确保图片有足够的像素来存储数据
-        required_pixels = len(full_binary)
-        available_pixels = image.shape[0] * image.shape[1] * 3
-        
-        if required_pixels > available_pixels:
-            raise ValueError(f"图片太小，无法存储数据。需要 {required_pixels} 位，可用 {available_pixels} 位")
-        
-        print(f"嵌入数据: {len(data)} 字节, {len(full_binary)} 位, 图片容量: {available_pixels} 位")
+        print(f"嵌入ZIP数据: {len(zip_data)} 字节")
         
         # 复制图片
         embedded_image = image.copy()
         
-        # 嵌入数据到LSB
+        # 将ZIP数据转换为二进制字符串
+        data_binary = ''.join(format(byte, '08b') for byte in zip_data)
+        
+        # 添加数据长度标记（32位）
+        data_length = len(zip_data)
+        length_binary = format(data_length, '032b')
+        full_binary = length_binary + data_binary
+        
+        # 嵌入数据到图片的LSB
         data_index = 0
         for i in range(image.shape[0]):
             for j in range(image.shape[1]):
