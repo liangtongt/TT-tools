@@ -74,7 +74,7 @@ pip install git+https://github.com/tttools/tt-img-enc.git
 2. 设置输出文件名（可选）
 3. 运行工作流
 4. 查看提取状态和文件路径
-5. 提取的文件保存在 `temp/` 目录下
+5. 提取的文件保存在ComfyUI的 `output/` 目录下
 
 ### 完整工作流示例
 

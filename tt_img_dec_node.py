@@ -6,10 +6,11 @@ from typing import List
 
 class TTImgDecNode:
     def __init__(self):
-        self.temp_dir = "temp"
+        # 使用ComfyUI的output目录
+        self.output_dir = "output"
         
         # 创建必要的目录
-        os.makedirs(self.temp_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -19,7 +20,7 @@ class TTImgDecNode:
                 "output_filename": ("STRING", {"default": "extracted_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "从造点图片中提取隐藏的文件（MP4/JPG等）\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
@@ -75,7 +76,7 @@ class TTImgDecNode:
             if not output_filename.endswith(f".{file_extension}"):
                 output_filename = f"{output_filename}.{file_extension}"
             
-            output_path = os.path.join(self.temp_dir, output_filename)
+            output_path = os.path.join(self.output_dir, output_filename)
             
             # 保存文件
             with open(output_path, 'wb') as f:
@@ -90,6 +91,7 @@ class TTImgDecNode:
                 print(f"=== 提取完成 ===")
                 print(f"输出文件: {output_path}")
                 print(f"文件大小: {len(file_data)} 字节")
+                print(f"文件位置: ComfyUI output 目录")
             
             return ("提取成功", output_path)
             

@@ -43,7 +43,7 @@ LoadImage → TTImgDecNode → PreviewText
 
 ### 3. 输出文件
 
-提取的文件会保存在 `temp/` 目录下，文件名格式为：
+提取的文件会保存在ComfyUI的 `output/` 目录下，文件名格式为：
 - 如果指定了 `output_filename`: `{output_filename}.{扩展名}`
 - 如果未指定: `extracted_file.{扩展名}`
 
@@ -68,7 +68,7 @@ LoadImage → TTImgDecNode → PreviewText
 1. **图片要求**: 必须是3通道RGB格式的造点图片
 2. **文件完整性**: 确保图片完整下载，避免损坏
 3. **存储空间**: 确保有足够的磁盘空间保存提取的文件
-4. **权限**: 确保对 `temp/` 目录有写入权限
+4. **权限**: 确保对ComfyUI的 `output/` 目录有写入权限
 
 ## 错误处理
 
