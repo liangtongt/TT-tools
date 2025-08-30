@@ -98,6 +98,7 @@ Load Image → TT img enc → Save Image
 
 ### 常见错误
 
+- **OpenCV error: src is not a numpy array**：这通常意味着输入格式问题，v1.0.2已修复
 - **'numpy.ndarray' object has no attribute 'cpu'**：这通常意味着torch未正确安装或版本不兼容
 - **ImportError: No module named 'cv2'**：需要安装opencv-python
 - **ImportError: No module named 'PIL'**：需要安装Pillow
@@ -110,5 +111,6 @@ Load Image → TT img enc → Save Image
 
 ## 更新日志
 
+- v1.0.2: 修复torch张量输入处理问题，自动转换ComfyUI输入格式
 - v1.0.1: 修复torch兼容性和输出格式问题，确保只输出一张图片
 - v1.0.0: 初始版本，支持基本的图片转视频/图片功能

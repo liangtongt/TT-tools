@@ -43,17 +43,33 @@ class TTImgEncNode:
             # 获取图片数量
             num_images = len(images)
             
+            # 将ComfyUI的torch张量转换为numpy数组
+            numpy_images = []
+            for img in images:
+                if hasattr(img, 'cpu'):
+                    # 如果是torch张量，转换为numpy
+                    img_np = img.cpu().numpy()
+                    # 确保值范围在0-255
+                    if img_np.max() <= 1.0:
+                        img_np = (img_np * 255).astype(np.uint8)
+                    else:
+                        img_np = img_np.astype(np.uint8)
+                else:
+                    # 如果已经是numpy数组
+                    img_np = np.array(img).astype(np.uint8)
+                numpy_images.append(img_np)
+            
             # 创建临时文件
             temp_file = None
             file_extension = None
             
             if num_images > 1:
                 # 多张图片，转换为MP4
-                temp_file = self._images_to_mp4(images, fps)
+                temp_file = self._images_to_mp4(numpy_images, fps)
                 file_extension = "mp4"
             else:
                 # 单张图片，转换为JPG
-                temp_file = self._image_to_jpg(images[0], quality)
+                temp_file = self._image_to_jpg(numpy_images[0], quality)
                 file_extension = "jpg"
             
             # 创建造点图片并嵌入文件
