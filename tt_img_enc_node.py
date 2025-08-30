@@ -19,7 +19,7 @@ class TTImgEncNode:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "fps": ("INT", {"default":16, "min": 1, "max": 60}),
+                "fps": ("FLOAT", {"default": 16.0, "min": 0.1, "max": 120.0}),
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             }
         }
@@ -29,7 +29,7 @@ class TTImgEncNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, fps=16, quality=95):
+    def process_images(self, images, fps=16.0, quality=95):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片
         """
@@ -89,7 +89,7 @@ class TTImgEncNode:
             error_tensor = error_tensor.unsqueeze(0)  # 添加batch维度
             return (error_tensor,)
     
-    def _images_to_mp4(self, images: List[np.ndarray], fps: int) -> str:
+    def _images_to_mp4(self, images: List[np.ndarray], fps: float) -> str:
         """将多张图片转换为MP4视频"""
         temp_path = os.path.join(self.temp_dir, "temp_video.mp4")
         
