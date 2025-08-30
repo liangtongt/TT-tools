@@ -51,7 +51,7 @@ pip install git+https://github.com/tttools/tt-img-enc.git
 4. 下载输出的造点图片
 5. 使用提取工具获得隐藏的ZIP文件
 
-### ZIP文件提取
+### 文件提取
 
 **方法1：使用Python脚本（推荐）**
 ```bash
@@ -60,13 +60,14 @@ python extract_zip.py <图片路径>
 
 **方法2：指定输出路径**
 ```bash
-python extract_zip.py <图片路径> <输出ZIP路径>
+python extract_zip.py <图片路径> <输出文件路径>
 ```
 
 **示例：**
 ```bash
 python extract_zip.py output_image.png
-python extract_zip.py output_image.png my_video.zip
+python extract_zip.py output_image.png my_video.mp4
+python extract_zip.py output_image.png my_image.jpg
 ```
 
 ## 技术原理
@@ -82,7 +83,8 @@ python extract_zip.py output_image.png my_video.zip
 
 ### 文件嵌入
 - 使用 LSB（最低有效位）隐写术
-- 将 ZIP 文件数据嵌入到图片像素中
+- 直接嵌入原始文件数据（不使用ZIP压缩）
+- 保持文件扩展名信息
 - 支持任意大小的文件（受图片尺寸限制）
 
 ### 造点图片
@@ -97,7 +99,7 @@ python extract_zip.py output_image.png my_video.zip
 3. **文件大小限制**：支持最大约96KB的文件（512x512图片）
 4. **临时文件**：处理过程中会创建临时文件，完成后自动清理
 5. **错误处理**：如果处理失败，会输出错误提示图片
-6. **ZIP提取**：必须使用提供的提取工具，不能直接改后缀名
+6. **文件提取**：必须使用提供的提取工具，不能直接改后缀名
 
 ## 示例工作流
 
@@ -129,6 +131,7 @@ Load Image → TT img enc → Save Image
 
 ## 更新日志
 
+- v1.0.5: 移除ZIP压缩，直接存储原始文件，提高存储效率
 - v1.0.4: 修复ZIP提取问题，提供专用提取工具，确保数据完整性
 - v1.0.3: 修复存储容量问题，支持大文件（如21帧视频），动态图片尺寸
 - v1.0.2: 修复torch张量输入处理问题，自动转换ComfyUI输入格式

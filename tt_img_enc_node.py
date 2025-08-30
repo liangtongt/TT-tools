@@ -147,15 +147,15 @@ class TTImgEncNode:
         with open(file_path, 'rb') as f:
             file_data = f.read()
         
-        # 创建ZIP文件
-        zip_data = self._create_zip_with_file(file_data, file_extension)
+        # 创建文件头信息（包含文件扩展名）
+        file_header = self._create_file_header(file_data, file_extension)
         
         # 创建造点图片（固定尺寸，确保兼容性）
         image_size = 512
         noise_image = self._create_noise_image(image_size, noise_density, noise_size)
         
-        # 将ZIP数据嵌入到图片中（使用简单的数据嵌入方法）
-        embedded_image = self._embed_zip_data_in_image(noise_image, zip_data)
+        # 将文件数据直接嵌入到图片中（不使用ZIP压缩）
+        embedded_image = self._embed_file_data_in_image(noise_image, file_header)
         
         return embedded_image
     
@@ -186,23 +186,42 @@ class TTImgEncNode:
         
         return side_length
     
-    def _embed_zip_data_in_image(self, image: np.ndarray, zip_data: bytes) -> np.ndarray:
-        """将ZIP数据嵌入到图片中（使用简单的数据嵌入方法）"""
+    def _create_file_header(self, file_data: bytes, file_extension: str) -> bytes:
+        """创建文件头信息（包含文件扩展名和数据）"""
+        # 文件头格式：[扩展名长度(1字节)][扩展名][数据长度(4字节)][数据]
+        extension_bytes = file_extension.encode('utf-8')
+        extension_length = len(extension_bytes)
+        
+        # 检查扩展名长度（最大255字节）
+        if extension_length > 255:
+            raise ValueError(f"文件扩展名太长: {file_extension}")
+        
+        # 构建文件头
+        header = bytearray()
+        header.append(extension_length)  # 扩展名长度
+        header.extend(extension_bytes)   # 扩展名
+        header.extend(len(file_data).to_bytes(4, 'big'))  # 数据长度（4字节）
+        header.extend(file_data)         # 文件数据
+        
+        return bytes(header)
+    
+    def _embed_file_data_in_image(self, image: np.ndarray, file_header: bytes) -> np.ndarray:
+        """将文件数据直接嵌入到图片中（不使用ZIP压缩）"""
         # 检查数据大小是否超过图片容量
         max_data_size = 512 * 512 * 3 // 8  # 每个像素3通道，每8位1字节
-        if len(zip_data) > max_data_size:
-            raise ValueError(f"ZIP文件太大 ({len(zip_data)} 字节)，最大支持 {max_data_size} 字节")
+        if len(file_header) > max_data_size:
+            raise ValueError(f"文件太大 ({len(file_header)} 字节)，最大支持 {max_data_size} 字节")
         
-        print(f"嵌入ZIP数据: {len(zip_data)} 字节")
+        print(f"嵌入文件数据: {len(file_header)} 字节")
         
         # 复制图片
         embedded_image = image.copy()
         
-        # 将ZIP数据转换为二进制字符串
-        data_binary = ''.join(format(byte, '08b') for byte in zip_data)
+        # 将文件数据转换为二进制字符串
+        data_binary = ''.join(format(byte, '08b') for byte in file_header)
         
-        # 添加数据长度标记（32位）
-        data_length = len(zip_data)
+        # 添加数据长度标记（前32位）
+        data_length = len(file_header)
         length_binary = format(data_length, '032b')
         full_binary = length_binary + data_binary
         

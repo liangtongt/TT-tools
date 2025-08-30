@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-TT img enc ZIP文件提取工具
-从造点图片中提取隐藏的ZIP文件
+TT img enc 文件提取工具
+从造点图片中提取隐藏的文件（MP4/JPG等）
 """
 
 import os
@@ -11,19 +11,19 @@ from PIL import Image
 import zipfile
 import io
 
-def extract_zip_from_image(image_path: str, output_path: str = None) -> bool:
+def extract_file_from_image(image_path: str, output_path: str = None) -> bool:
     """
-    从图片中提取ZIP文件
+    从图片中提取隐藏文件
     
     Args:
         image_path: 造点图片路径
-        output_path: 输出ZIP文件路径（可选）
+        output_path: 输出文件路径（可选）
     
     Returns:
         bool: 是否成功提取
     """
     try:
-        print(f"正在从图片中提取ZIP文件: {image_path}")
+        print(f"正在从图片中提取隐藏文件: {image_path}")
         
         # 读取图片
         image = Image.open(image_path)
@@ -31,34 +31,25 @@ def extract_zip_from_image(image_path: str, output_path: str = None) -> bool:
         
         print(f"图片尺寸: {image_array.shape}")
         
-        # 从图片中提取ZIP数据
-        zip_data = extract_zip_data_from_image(image_array)
+        # 从图片中提取文件数据
+        file_data, file_extension = extract_file_data_from_image(image_array)
         
-        if zip_data is None:
-            print("❌ 无法从图片中提取ZIP数据")
+        if file_data is None:
+            print("❌ 无法从图片中提取文件数据")
             return False
         
-        print(f"✓ 成功提取ZIP数据: {len(zip_data)} 字节")
+        print(f"✓ 成功提取文件数据: {len(file_data)} 字节")
         
         # 确定输出路径
         if output_path is None:
             base_name = os.path.splitext(image_path)[0]
-            output_path = f"{base_name}.zip"
+            output_path = f"{base_name}.{file_extension}"
         
-        # 保存ZIP文件
+        # 保存文件
         with open(output_path, 'wb') as f:
-            f.write(zip_data)
+            f.write(file_data)
         
-        print(f"✓ ZIP文件已保存到: {output_path}")
-        
-        # 验证ZIP文件
-        try:
-            with zipfile.ZipFile(output_path, 'r') as zip_file:
-                file_list = zip_file.namelist()
-                print(f"✓ ZIP文件验证成功，包含文件: {file_list}")
-        except Exception as e:
-            print(f"⚠️  ZIP文件验证失败: {e}")
-            return False
+        print(f"✓ 文件已保存到: {output_path}")
         
         return True
         
@@ -66,21 +57,21 @@ def extract_zip_from_image(image_path: str, output_path: str = None) -> bool:
         print(f"❌ 提取失败: {e}")
         return False
 
-def extract_zip_data_from_image(image_array: np.ndarray) -> bytes:
+def extract_file_data_from_image(image_array: np.ndarray) -> tuple:
     """
-    从图片数组中提取ZIP数据
+    从图片数组中提取文件数据
     
     Args:
         image_array: 图片数组
     
     Returns:
-        bytes: ZIP文件数据，如果失败返回None
+        tuple: (file_data, file_extension) 或 (None, None)
     """
     try:
         # 确保图片是3通道RGB
         if len(image_array.shape) != 3 or image_array.shape[2] != 3:
             print("❌ 图片必须是3通道RGB格式")
-            return None
+            return None, None
         
         height, width, channels = image_array.shape
         
@@ -88,19 +79,19 @@ def extract_zip_data_from_image(image_array: np.ndarray) -> bytes:
         binary_data = extract_binary_from_lsb(image_array)
         
         if binary_data is None:
-            return None
+            return None, None
         
         # 解析数据长度（前32位）
         if len(binary_data) < 32:
             print("❌ 数据长度不足")
-            return None
+            return None, None
         
         length_binary = binary_data[:32]
         try:
             data_length = int(length_binary, 2)
         except ValueError:
             print("❌ 无法解析数据长度")
-            return None
+            return None, None
         
         print(f"数据长度标记: {data_length} 字节")
         
@@ -108,19 +99,41 @@ def extract_zip_data_from_image(image_array: np.ndarray) -> bytes:
         expected_bits = 32 + data_length * 8
         if len(binary_data) < expected_bits:
             print(f"❌ 数据不完整，期望 {expected_bits} 位，实际 {len(binary_data)} 位")
-            return None
+            return None, None
         
-        # 提取ZIP数据
-        zip_binary = binary_data[32:32 + data_length * 8]
+        # 提取文件头数据
+        file_header_binary = binary_data[32:32 + data_length * 8]
+        file_header = binary_to_bytes(file_header_binary)
         
-        # 转换为字节
-        zip_data = binary_to_bytes(zip_binary)
+        # 解析文件头
+        if len(file_header) < 5:  # 至少需要1字节扩展名长度 + 4字节数据长度
+            print("❌ 文件头数据不完整")
+            return None, None
         
-        return zip_data
+        # 解析扩展名长度
+        extension_length = file_header[0]
+        
+        if len(file_header) < 1 + extension_length + 4:
+            print("❌ 文件头数据不完整")
+            return None, None
+        
+        # 解析扩展名
+        file_extension = file_header[1:1 + extension_length].decode('utf-8')
+        
+        # 解析数据长度
+        data_size = int.from_bytes(file_header[1 + extension_length:1 + extension_length + 4], 'big')
+        
+        # 提取文件数据
+        file_data = file_header[1 + extension_length + 4:]
+        
+        print(f"文件扩展名: {file_extension}")
+        print(f"文件数据大小: {len(file_data)} 字节")
+        
+        return file_data, file_extension
         
     except Exception as e:
         print(f"❌ 数据提取失败: {e}")
-        return None
+        return None, None
 
 def extract_binary_from_lsb(image_array: np.ndarray) -> str:
     """
@@ -219,7 +232,7 @@ def main():
     if len(sys.argv) < 2:
         print("使用方法: python extract_zip.py <图片路径> [输出路径]")
         print("示例: python extract_zip.py output_image.png")
-        print("示例: python extract_zip.py output_image.png extracted.zip")
+        print("示例: python extract_zip.py output_image.png extracted.mp4")
         return
     
     image_path = sys.argv[1]
@@ -229,15 +242,15 @@ def main():
         print(f"❌ 图片文件不存在: {image_path}")
         return
     
-    # 提取ZIP文件
-    success = extract_zip_from_image(image_path, output_path)
+    # 提取隐藏文件
+    success = extract_file_from_image(image_path, output_path)
     
     if success:
-        print("\n🎉 ZIP文件提取成功！")
+        print("\n🎉 隐藏文件提取成功！")
         if output_path:
             print(f"文件位置: {output_path}")
     else:
-        print("\n❌ ZIP文件提取失败！")
+        print("\n❌ 隐藏文件提取失败！")
         print("请检查:")
         print("1. 图片是否由TT img enc节点生成")
         print("2. 图片是否完整下载")
