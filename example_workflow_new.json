@@ -1,0 +1,119 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [100, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"links": [1], "slot_index": 0},
+        "MASK": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": ["image1.png"]
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [100, 200],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"links": [2], "slot_index": 0},
+        "MASK": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": ["image2.png"]
+    },
+    {
+      "id": 3,
+      "type": "ImageBatch",
+      "pos": [400, 150],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 2,
+      "inputs": {
+        "image1": {"link": 1, "slot_index": 0},
+        "image2": {"link": 2, "slot_index": 0}
+      },
+      "outputs": {
+        "images": {"links": [3], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 4,
+      "type": "LoadImage",
+      "pos": [400, 300],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"links": [4], "slot_index": 0},
+        "MASK": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": ["container_image.png"]
+    },
+    {
+      "id": 5,
+      "type": "ImageSequenceCompressor",
+      "pos": [700, 200],
+      "size": {"0": 210, "1": 150},
+      "flags": {},
+      "order": 4,
+      "inputs": {
+        "images": {"link": 3, "slot_index": 0},
+        "image": {"link": 4, "slot_index": 0},
+        "compression_level": {"link": 5, "slot_index": 0},
+        "quality": {"link": [], "slot_index": 3},
+        "format": {"link": [], "slot_index": 4},
+        "include_metadata": {"link": [], "slot_index": 5}
+      },
+      "outputs": {
+        "image": {"links": [], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": [
+        6,
+        95,
+        "PNG",
+        true
+      ]
+    },
+    {
+      "id": 6,
+      "type": "PrimitiveNode",
+      "pos": [700, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 5,
+      "inputs": {},
+      "outputs": {
+        "INT": {"links": [5], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": [6]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 3, 0],
+    [2, 2, 0, 3, 1],
+    [3, 3, 0, 5, 0],
+    [4, 4, 0, 5, 1],
+    [5, 6, 0, 5, 2]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}

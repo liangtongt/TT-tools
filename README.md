@@ -50,22 +50,30 @@ chmod +x install.sh
 ### 在ComfyUI中使用
 
 1. 添加 "Image Sequence Compressor" 节点
-2. 连接图片序列到输入端口
-3. 设置输出文件名和压缩参数
-4. 运行工作流
+2. 连接输入：
+   - `images`: 需要压缩的图片序列
+   - `image`: 承载压缩数据的容器图片
+3. 设置压缩参数（压缩级别、质量、格式等）
+4. 运行工作流，输出为包含压缩数据的图像
 
 ### Python还原脚本
 
-使用 `extract_images.py` 脚本来还原压缩的图片序列：
+使用 `extract_from_image.py` 脚本来从图像中提取压缩的图片序列：
 
 ```bash
-python extract_images.py compressed_image.png output_directory
+python extract_from_image.py output_image.png output_directory
 ```
+
+**注意**: 现在节点直接输出图像，而不是保存文件。你可以：
+1. 在ComfyUI中查看输出的图像
+2. 保存图像到本地
+3. 使用Python脚本从保存的图像中提取原始图片序列
 
 ## 文件结构
 
 - `image_sequence_compressor.py` - ComfyUI节点主文件
-- `extract_images.py` - Python还原脚本
+- `extract_from_image.py` - 从图像中提取压缩数据的Python脚本
+- `extract_images.py` - 从压缩文件中提取的Python脚本（兼容旧版本）
 - `requirements.txt` - Python依赖
 - `example_workflow.json` - 示例工作流
 - `test_images/` - 测试图片目录
