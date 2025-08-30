@@ -5,6 +5,7 @@ import base64
 from PIL import Image, ImageDraw
 import numpy as np
 import cv2
+import torch
 from typing import List, Union, Tuple
 import io
 
@@ -62,12 +63,17 @@ class TTImgEncNode:
             if temp_file and os.path.exists(temp_file):
                 os.remove(temp_file)
             
-            return (output_image,)
+            # 转换为torch张量，确保与ComfyUI兼容
+            output_tensor = torch.from_numpy(output_image).float() / 255.0
+            
+            return (output_tensor,)
             
         except Exception as e:
             print(f"Error in TT img enc node: {str(e)}")
             # 返回一个错误提示图片
-            return (self._create_error_image(),)
+            error_image = self._create_error_image()
+            error_tensor = torch.from_numpy(error_image).float() / 255.0
+            return (error_tensor,)
     
     def _images_to_mp4(self, images: List[np.ndarray], fps: int) -> str:
         """将多张图片转换为MP4视频"""

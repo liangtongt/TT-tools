@@ -93,6 +93,13 @@ Load Image → TT img enc → Save Image
 1. **依赖缺失**：确保安装了所有必需的 Python 包
 2. **内存不足**：处理大量图片时可能需要更多内存
 3. **文件权限**：确保 ComfyUI 有权限创建临时目录
+4. **torch兼容性**：确保ComfyUI环境中有torch支持
+
+### 常见错误
+
+- **'numpy.ndarray' object has no attribute 'cpu'**：这通常意味着torch未正确安装或版本不兼容
+- **ImportError: No module named 'cv2'**：需要安装opencv-python
+- **ImportError: No module named 'PIL'**：需要安装Pillow
 
 ### 错误信息
 
