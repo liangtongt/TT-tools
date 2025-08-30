@@ -89,8 +89,8 @@ class TTImgEncNode:
             
         except Exception as e:
             print(f"Error in TT img enc node: {str(e)}")
-            # 返回一个错误提示图片
-            error_image = self._create_error_image()
+            # 返回一个错误提示图片（使用默认尺寸）
+            error_image = self._create_error_image(512)
             error_tensor = torch.from_numpy(error_image).float() / 255.0
             error_tensor = error_tensor.unsqueeze(0)  # 添加batch维度
             return (error_tensor,)
@@ -150,15 +150,15 @@ class TTImgEncNode:
         # 创建ZIP文件
         zip_data = self._create_zip_with_file(file_data, file_extension)
         
-        # 将ZIP数据转换为base64字符串
-        zip_base64 = base64.b64encode(zip_data).decode('utf-8')
+        # 计算需要的图片尺寸
+        required_size = self._calculate_required_image_size(zip_data)
+        print(f"文件大小: {len(zip_data)} 字节, 需要图片尺寸: {required_size}x{required_size}")
         
-        # 创建造点图片
-        image_size = 512  # 固定尺寸
-        noise_image = self._create_noise_image(image_size, noise_density, noise_size)
+        # 创建造点图片（动态尺寸）
+        noise_image = self._create_noise_image(required_size, noise_density, noise_size)
         
-        # 将base64数据嵌入到图片中
-        embedded_image = self._embed_data_in_image(noise_image, zip_base64)
+        # 将ZIP数据直接嵌入到图片中（不使用base64，节省空间）
+        embedded_image = self._embed_binary_data_in_image(noise_image, zip_data)
         
         return embedded_image
     
@@ -171,6 +171,66 @@ class TTImgEncNode:
             zip_file.writestr(filename, file_data)
         
         return zip_buffer.getvalue()
+    
+    def _calculate_required_image_size(self, data: bytes) -> int:
+        """计算存储数据所需的图片尺寸"""
+        # 每个像素3个通道，每个通道1位
+        bits_needed = len(data) * 8
+        pixels_needed = bits_needed // 3
+        
+        # 计算正方形图片的边长
+        side_length = int(np.ceil(np.sqrt(pixels_needed)))
+        
+        # 确保最小尺寸为512，最大尺寸为2048
+        side_length = max(512, min(side_length, 2048))
+        
+        # 向上取整到最近的8的倍数（优化性能）
+        side_length = ((side_length + 7) // 8) * 8
+        
+        return side_length
+    
+    def _embed_binary_data_in_image(self, image: np.ndarray, data: bytes) -> np.ndarray:
+        """将二进制数据直接嵌入到图片中（更高效的LSB隐写术）"""
+        # 将字节数据转换为二进制字符串
+        data_binary = ''.join(format(byte, '08b') for byte in data)
+        
+        # 添加文件大小信息（前32位）
+        file_size = len(data)
+        size_binary = format(file_size, '032b')
+        full_binary = size_binary + data_binary
+        
+        # 确保图片有足够的像素来存储数据
+        required_pixels = len(full_binary)
+        available_pixels = image.shape[0] * image.shape[1] * 3
+        
+        if required_pixels > available_pixels:
+            raise ValueError(f"图片太小，无法存储数据。需要 {required_pixels} 位，可用 {available_pixels} 位")
+        
+        print(f"嵌入数据: {len(data)} 字节, {len(full_binary)} 位, 图片容量: {available_pixels} 位")
+        
+        # 复制图片
+        embedded_image = image.copy()
+        
+        # 嵌入数据到LSB
+        data_index = 0
+        for i in range(image.shape[0]):
+            for j in range(image.shape[1]):
+                for k in range(3):  # RGB通道
+                    if data_index < len(full_binary):
+                        # 修改最低位
+                        if full_binary[data_index] == '1':
+                            embedded_image[i, j, k] |= 1
+                        else:
+                            embedded_image[i, j, k] &= 0xFE
+                        data_index += 1
+                    else:
+                        break
+                if data_index >= len(full_binary):
+                    break
+            if data_index >= len(full_binary):
+                break
+        
+        return embedded_image
     
     def _create_noise_image(self, size: int, density: float, noise_size: int) -> np.ndarray:
         """创建造点图片"""
@@ -229,15 +289,24 @@ class TTImgEncNode:
         
         return embedded_image
     
-    def _create_error_image(self) -> np.ndarray:
+    def _create_error_image(self, size: int = 512) -> np.ndarray:
         """创建错误提示图片"""
-        image = np.ones((512, 512, 3), dtype=np.uint8) * 255
+        image = np.ones((size, size, 3), dtype=np.uint8) * 255
+        
+        # 根据图片尺寸调整文字大小和位置
+        scale = size / 512.0
+        font_scale = max(0.5, scale)
+        thickness = max(1, int(scale))
+        
+        # 计算文字位置
+        text1_pos = (int(50 * scale), int(200 * scale))
+        text2_pos = (int(50 * scale), int(250 * scale))
         
         # 添加错误文字
-        cv2.putText(image, "Error in TT img enc", (50, 200), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-        cv2.putText(image, "Check console for details", (50, 250), 
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        cv2.putText(image, "Error in TT img enc", text1_pos, 
+                   cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 0, 0), thickness)
+        cv2.putText(image, "Check console for details", text2_pos, 
+                   cv2.FONT_HERSHEY_SIMPLEX, font_scale * 0.8, (0, 0, 255), thickness)
         
         return image
 
