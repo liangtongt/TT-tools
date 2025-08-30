@@ -74,15 +74,15 @@
       "order": 4,
       "inputs": {
         "images": {"link": 4, "slot_index": 0},
-        "quality": {"link": 7, "slot_index": 0}
+        "quality": {"link": 6, "slot_index": 0}
       },
       "outputs": {
         "image": {"links": [5], "slot_index": 0}
       },
       "properties": {},
       "widgets_values": [
-        85,
-        512
+        100,
+        true
       ]
     },
 
@@ -98,7 +98,7 @@
         "INT": {"links": [6], "slot_index": 0}
       },
       "properties": {},
-      "widgets_values": [85]
+      "widgets_values": [100]
     }
   ],
   "links": [

@@ -37,8 +37,8 @@ def demo_simplified_compression():
         
         result_single = compressor.compress_sequence(
             images=[test_single],
-            quality=85,
-            container_size=512
+            quality=100,
+            use_original_size=True
         )
         
         print(f"  输入: 1张图片")
@@ -54,8 +54,8 @@ def demo_simplified_compression():
         
         result_multiple = compressor.compress_sequence(
             images=test_multiple,
-            quality=85,
-            container_size=512
+            quality=100,
+            use_original_size=True
         )
         
         print(f"  输入: {len(test_multiple)}张图片")
@@ -84,8 +84,8 @@ def demo_simplified_compression():
         print("\n📋 使用方法:")
         print("  1. 在ComfyUI中添加 'Image Sequence Compressor' 节点")
         print("  2. 连接图片序列到 'images' 输入")
-        print("  3. 设置质量参数 (默认85)")
-        print("  4. 设置承载图片尺寸 (默认512)")
+        print("  3. 设置质量参数 (默认100，最高质量)")
+        print("  4. 设置尺寸参数 (默认使用原始尺寸)")
         print("  5. 运行工作流，获得包含压缩数据的图片")
         print("  6. 使用 extract_from_image.py 脚本提取原始数据")
         

@@ -23,8 +23,8 @@ class ImageSequenceCompressor:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "quality": ("INT", {"default": 85, "min": 1, "max": 100}),
-                "container_size": ("INT", {"default": 512, "min": 256, "max": 2048})
+                "quality": ("INT", {"default": 100, "min": 1, "max": 100}),
+                "use_original_size": ("BOOLEAN", {"default": True})
             }
         }
     
@@ -33,7 +33,7 @@ class ImageSequenceCompressor:
     FUNCTION = "compress_sequence"
     CATEGORY = "image/compression"
     
-    def compress_sequence(self, images, quality, container_size):
+    def compress_sequence(self, images, quality, use_original_size):
         """将图片序列压缩并嵌入到自动生成的承载图像中"""
         
         # 准备元数据
@@ -70,8 +70,17 @@ class ImageSequenceCompressor:
         
 
         
+        # 确定承载图像尺寸
+        if use_original_size and len(images) > 0:
+            # 使用第一张图片的原始尺寸
+            first_img = self._tensor_to_numpy(images[0])
+            container_width, container_height = first_img.shape[1], first_img.shape[0]
+        else:
+            # 使用默认尺寸
+            container_width, container_height = 512, 512
+        
         # 创建承载图像
-        container_image = self._create_container_image(container_size, container_size)
+        container_image = self._create_container_image(container_width, container_height)
         
         # 将JSON数据嵌入到图像中
         final_image = self._embed_data_in_image(container_image, json_data)
@@ -85,7 +94,7 @@ class ImageSequenceCompressor:
         return (torch.from_numpy(final_array),)
     
     def _embed_data_in_image(self, image, data):
-        """将数据嵌入到图像中（简单像素替换）"""
+        """将数据嵌入到图像中（最小化像素修改）"""
         # 将数据转换为像素值
         data_bytes = data.encode('utf-8')
         data_length = len(data_bytes)
@@ -106,19 +115,21 @@ class ImageSequenceCompressor:
             new_image.paste(image, (0, 0))
             width, height = new_image.size
         
-        # 将数据长度嵌入到前4个像素中
+        # 将数据长度嵌入到前4个像素中（只修改红色通道）
         length_bytes = data_length.to_bytes(4, byteorder='big')
         for i in range(4):
             x, y = i % width, i // width
             if y < height:
-                new_image.putpixel((x, y), (length_bytes[i], length_bytes[i], length_bytes[i]))
+                original_pixel = new_image.getpixel((x, y))
+                new_image.putpixel((x, y), (length_bytes[i], original_pixel[1], original_pixel[2]))
         
-        # 将数据嵌入到后续像素中
+        # 将数据嵌入到后续像素中（只修改红色通道）
         for i, byte_val in enumerate(data_bytes):
             pixel_index = i + 4  # 跳过长度信息
             x, y = pixel_index % width, pixel_index // width
             if y < height:
-                new_image.putpixel((x, y), (byte_val, byte_val, byte_val))
+                original_pixel = new_image.getpixel((x, y))
+                new_image.putpixel((x, y), (byte_val, original_pixel[1], original_pixel[2]))
         
         return new_image
     
@@ -220,23 +231,31 @@ class ImageSequenceCompressor:
         return img_array
     
     def _create_container_image(self, width, height):
-        """创建承载数据的图像"""
-        # 创建一个渐变背景的图像
-        img = Image.new('RGB', (width, height), (240, 240, 240))
+        """创建承载数据的图像（高质量）"""
+        # 创建一个高质量的背景图像
+        img = Image.new('RGB', (width, height), (255, 255, 255))
         
-        # 添加一些简单的图案，让图像看起来更自然
+        # 添加一些高质量的图案，让图像看起来更自然
         from PIL import ImageDraw
         
         draw = ImageDraw.Draw(img)
         
-        # 添加一些随机的小点
+        # 创建渐变背景
+        for y in range(height):
+            # 从白色到浅灰色的渐变
+            intensity = int(255 - (y / height) * 20)
+            color = (intensity, intensity, intensity)
+            draw.line([(0, y), (width, y)], fill=color)
+        
+        # 添加一些高质量的点
         import random
         random.seed(42)  # 固定种子，确保每次生成相同的图像
         
-        for _ in range(50):
+        for _ in range(min(100, width * height // 100)):  # 根据图像大小调整点数
             x = random.randint(0, width-1)
             y = random.randint(0, height-1)
-            color = (random.randint(200, 255), random.randint(200, 255), random.randint(200, 255))
+            # 使用更自然的颜色
+            color = (random.randint(240, 255), random.randint(240, 255), random.randint(240, 255))
             draw.point((x, y), fill=color)
         
         return img
