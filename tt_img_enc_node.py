@@ -150,9 +150,12 @@ class TTImgEncNode:
         # 创建文件头信息（包含文件扩展名）
         file_header = self._create_file_header(file_data, file_extension)
         
-        # 创建造点图片（固定尺寸，确保兼容性）
-        image_size = 512
-        noise_image = self._create_noise_image(image_size, noise_density, noise_size)
+        # 计算所需的图片尺寸
+        required_size = self._calculate_required_image_size(file_header)
+        print(f"文件大小: {len(file_header)} 字节，需要图片尺寸: {required_size}x{required_size}")
+        
+        # 创建造点图片（动态尺寸）
+        noise_image = self._create_noise_image(required_size, noise_density, noise_size)
         
         # 将文件数据直接嵌入到图片中（不使用ZIP压缩）
         embedded_image = self._embed_file_data_in_image(noise_image, file_header)
@@ -178,8 +181,8 @@ class TTImgEncNode:
         # 计算正方形图片的边长
         side_length = int(np.ceil(np.sqrt(pixels_needed)))
         
-        # 确保最小尺寸为512，最大尺寸为2048
-        side_length = max(512, min(side_length, 2048))
+        # 确保最小尺寸为512，无上限限制
+        side_length = max(512, side_length)
         
         # 向上取整到最近的8的倍数（优化性能）
         side_length = ((side_length + 7) // 8) * 8
@@ -208,11 +211,11 @@ class TTImgEncNode:
     def _embed_file_data_in_image(self, image: np.ndarray, file_header: bytes) -> np.ndarray:
         """将文件数据直接嵌入到图片中（不使用ZIP压缩）"""
         # 检查数据大小是否超过图片容量
-        max_data_size = 512 * 512 * 3 // 8  # 每个像素3通道，每8位1字节
+        max_data_size = image.shape[0] * image.shape[1] * 3 // 8  # 每个像素3通道，每8位1字节
         if len(file_header) > max_data_size:
-            raise ValueError(f"文件太大 ({len(file_header)} 字节)，最大支持 {max_data_size} 字节")
+            raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节")
         
-        print(f"嵌入文件数据: {len(file_header)} 字节")
+        print(f"嵌入文件数据: {len(file_header)} 字节到 {image.shape[0]}x{image.shape[1]} 图片")
         
         # 复制图片
         embedded_image = image.copy()
