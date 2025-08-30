@@ -172,37 +172,40 @@ class ImageSequenceCompressor:
         return (torch.from_numpy(final_array),)
     
     def _embed_data_in_image(self, image, data):
-        """将数据嵌入到图像中"""
+        """将数据嵌入到图像中（简单像素替换）"""
         # 将数据转换为像素值
         data_bytes = data.encode('utf-8')
         data_length = len(data_bytes)
         
-        # 计算需要的行数（每行最多255个像素）
-        pixels_per_row = 255
-        rows_needed = (data_length + pixels_per_row - 1) // pixels_per_row
+        # 创建图像副本
+        new_image = image.copy()
+        width, height = new_image.size
         
-        # 创建新的图像，在底部添加数据行
-        new_width = max(image.width, pixels_per_row)
-        new_height = image.height + rows_needed + 1  # +1 for length row
+        # 检查图像是否有足够的像素来存储数据
+        total_pixels = width * height
+        required_pixels = data_length + 4  # +4 for length info
         
-        new_image = Image.new('RGB', (new_width, new_height), (255, 255, 255))
-        new_image.paste(image, (0, 0))
+        if total_pixels < required_pixels:
+            # 如果图像太小，扩展图像
+            new_width = max(width, int(required_pixels ** 0.5) + 1)
+            new_height = max(height, (required_pixels + new_width - 1) // new_width)
+            new_image = Image.new('RGB', (new_width, new_height), (255, 255, 255))
+            new_image.paste(image, (0, 0))
+            width, height = new_image.size
         
-        # 在底部添加长度信息行
-        length_row = [(data_length >> 16) & 255, (data_length >> 8) & 255, data_length & 255]
-        for i in range(3):
-            if i < new_width:
-                new_image.putpixel((i, image.height), (length_row[i], length_row[i], length_row[i]))
+        # 将数据长度嵌入到前4个像素中
+        length_bytes = data_length.to_bytes(4, byteorder='big')
+        for i in range(4):
+            x, y = i % width, i // width
+            if y < height:
+                new_image.putpixel((x, y), (length_bytes[i], length_bytes[i], length_bytes[i]))
         
-        # 添加数据行
-        for row in range(rows_needed):
-            start_idx = row * pixels_per_row
-            end_idx = min(start_idx + pixels_per_row, data_length)
-            row_data = data_bytes[start_idx:end_idx]
-            
-            for col, byte_val in enumerate(row_data):
-                if col < new_width:
-                    new_image.putpixel((col, image.height + 1 + row), (byte_val, byte_val, byte_val))
+        # 将数据嵌入到后续像素中
+        for i, byte_val in enumerate(data_bytes):
+            pixel_index = i + 4  # 跳过长度信息
+            x, y = pixel_index % width, pixel_index // width
+            if y < height:
+                new_image.putpixel((x, y), (byte_val, byte_val, byte_val))
         
         return new_image
 

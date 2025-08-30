@@ -14,9 +14,10 @@ import argparse
 import sys
 import io
 import numpy as np
+import torch
 
 def extract_images_from_image(image_path, output_directory):
-    """从图像中提取压缩的图片序列"""
+    """从图像中提取压缩的图片序列（简单像素替换）"""
     
     if not os.path.exists(image_path):
         print(f"错误：图像文件 {image_path} 不存在")
@@ -31,32 +32,31 @@ def extract_images_from_image(image_path, output_directory):
             # 获取图像尺寸
             width, height = img.size
             
-            # 读取底部数据行
+            # 从像素中读取数据长度
             data_length = 0
-            for i in range(3):
-                if i < width:
-                    pixel = img.getpixel((i, height - 1))
-                    data_length |= pixel[0] << (16 - i * 8)
+            for i in range(4):
+                x, y = i % width, i // width
+                if y < height:
+                    pixel = img.getpixel((x, y))
+                    # 从像素中提取数据
+                    byte_val = pixel[0]  # 使用红色通道
+                    data_length = (data_length << 8) | byte_val
             
             if data_length == 0:
                 print("错误：无法读取数据长度信息")
                 print("提示：这个图像可能没有包含压缩的图片序列数据")
                 return False
             
-            # 计算数据行数
-            pixels_per_row = 255
-            rows_needed = (data_length + pixels_per_row - 1) // pixels_per_row
-            
-            # 读取数据
+                        # 从像素中读取数据
             data_bytes = bytearray()
-            for row in range(rows_needed):
-                for col in range(pixels_per_row):
-                    if col < width and (height - 1 - rows_needed + row) >= 0:
-                        pixel = img.getpixel((col, height - 1 - rows_needed + row))
-                        data_bytes.append(pixel[0])
-            
-            # 截取到正确的长度
-            data_bytes = data_bytes[:data_length]
+            for i in range(data_length):
+                pixel_index = i + 4  # 跳过长度信息
+                x, y = pixel_index % width, pixel_index // width
+                if y < height:
+                    pixel = img.getpixel((x, y))
+                    # 从像素中提取数据
+                    byte_val = pixel[0]  # 使用红色通道
+                    data_bytes.append(byte_val)
             
             # 解析JSON数据
             json_data = data_bytes.decode('utf-8')
@@ -99,21 +99,36 @@ def extract_images_from_image(image_path, output_directory):
         return False
 
 def extract_from_numpy_array(image_array, output_directory):
-    """从numpy数组格式的图像中提取压缩的图片序列"""
+    """从numpy数组格式的图像中提取压缩的图片序列（简单像素替换）"""
     
     # 确保输出目录存在
     os.makedirs(output_directory, exist_ok=True)
     
     try:
-        # 转换numpy数组为PIL图像
-        if image_array.dtype != np.uint8:
-            if image_array.max() <= 1.0:
-                # 0-1范围，转换为0-255
-                img_array = (image_array * 255).astype(np.uint8)
-            else:
-                img_array = image_array.astype(np.uint8)
+        # 处理Tensor对象，转换为numpy数组
+        if torch.is_tensor(image_array):
+            img_array = image_array.cpu().numpy()
+            # 处理批次维度
+            if len(img_array.shape) == 4:
+                img_array = img_array[0]
+            # Tensor通常是CHW格式，需要转换为HWC格式
+            if len(img_array.shape) == 3 and img_array.shape[0] == 3:
+                img_array = np.transpose(img_array, (1, 2, 0))
         else:
             img_array = image_array
+            # 处理numpy数组的批次维度
+            if len(img_array.shape) == 4:
+                img_array = img_array[0]
+        
+        # 转换numpy数组为PIL图像
+        if img_array.dtype != np.uint8:
+            if img_array.max() <= 1.0:
+                # 0-1范围，转换为0-255
+                img_array = (img_array * 255).astype(np.uint8)
+            else:
+                img_array = img_array.astype(np.uint8)
+        else:
+            img_array = img_array
         
         # 确保图像是3通道RGB
         if len(img_array.shape) == 3 and img_array.shape[2] == 3:
@@ -127,32 +142,31 @@ def extract_from_numpy_array(image_array, output_directory):
         # 获取图像尺寸
         width, height = img.size
         
-        # 读取底部数据行
+        # 从像素中读取数据长度
         data_length = 0
-        for i in range(3):
-            if i < width:
-                pixel = img.getpixel((i, height - 1))
-                data_length |= pixel[0] << (16 - i * 8)
+        for i in range(4):
+            x, y = i % width, i // width
+            if y < height:
+                pixel = img.getpixel((x, y))
+                # 从像素中提取数据
+                byte_val = pixel[0]  # 使用红色通道
+                data_length = (data_length << 8) | byte_val
         
         if data_length == 0:
             print("错误：无法读取数据长度信息")
             print("提示：这个图像可能没有包含压缩的图片序列数据")
             return False
         
-        # 计算数据行数
-        pixels_per_row = 255
-        rows_needed = (data_length + pixels_per_row - 1) // pixels_per_row
-        
-        # 读取数据
+        # 从像素中读取数据
         data_bytes = bytearray()
-        for row in range(rows_needed):
-            for col in range(pixels_per_row):
-                if col < width and (height - 1 - rows_needed + row) >= 0:
-                    pixel = img.getpixel((col, height - 1 - rows_needed + row))
-                    data_bytes.append(pixel[0])
-        
-        # 截取到正确的长度
-        data_bytes = data_bytes[:data_length]
+        for i in range(data_length):
+            pixel_index = i + 4  # 跳过长度信息
+            x, y = pixel_index % width, pixel_index // width
+            if y < height:
+                pixel = img.getpixel((x, y))
+                # 从像素中提取数据
+                byte_val = pixel[0]  # 使用红色通道
+                data_bytes.append(byte_val)
         
         # 解析JSON数据
         json_data = data_bytes.decode('utf-8')
