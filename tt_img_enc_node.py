@@ -64,7 +64,10 @@ class TTImgEncNode:
                 os.remove(temp_file)
             
             # 转换为torch张量，确保与ComfyUI兼容
+            # 注意：ComfyUI期望的是(batch_size, height, width, channels)格式
+            # 我们只输出一张图片，所以batch_size=1
             output_tensor = torch.from_numpy(output_image).float() / 255.0
+            output_tensor = output_tensor.unsqueeze(0)  # 添加batch维度
             
             return (output_tensor,)
             
@@ -73,6 +76,7 @@ class TTImgEncNode:
             # 返回一个错误提示图片
             error_image = self._create_error_image()
             error_tensor = torch.from_numpy(error_image).float() / 255.0
+            error_tensor = error_tensor.unsqueeze(0)  # 添加batch维度
             return (error_tensor,)
     
     def _images_to_mp4(self, images: List[np.ndarray], fps: int) -> str:
