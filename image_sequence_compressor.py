@@ -91,9 +91,25 @@ class TTImg:
             # 如果是HWC格式，转换为CHW格式
             final_array = np.transpose(final_array, (2, 0, 1))
         
-        # 确保输出是单个图像，不是批次
-        final_tensor = torch.from_numpy(final_array)
-        # 添加批次维度 (1, C, H, W)
+        # 确保输出是标准的图像格式 (1, C, H, W)
+        # 检查并确保是3通道RGB图像
+        if len(final_array.shape) == 3:
+            if final_array.shape[0] == 3:  # 已经是CHW格式
+                pass
+            elif final_array.shape[2] == 3:  # 需要转换为CHW格式
+                final_array = np.transpose(final_array, (2, 0, 1))
+            else:
+                # 如果不是3通道，创建3通道图像
+                final_array = np.stack([final_array[:, :, 0]] * 3, axis=0)
+        else:
+            # 如果不是3D，创建3通道图像
+            final_array = np.stack([final_array] * 3, axis=0)
+        
+        # 确保数值范围在0-1之间
+        final_array = np.clip(final_array, 0.0, 1.0)
+        
+        # 转换为Tensor并添加批次维度
+        final_tensor = torch.from_numpy(final_array).float()
         final_tensor = final_tensor.unsqueeze(0)
         
         return (final_tensor,)
