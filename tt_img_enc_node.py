@@ -22,9 +22,22 @@ class TTImgEncNode:
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "  利用图片的像素信息保存视频或图片\n配合解码本地解码，达到破限的目的\nB站：我是小斯呀\n教程：https://b23.tv/RbvaMeW", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片\n配合解码本地解码，即可获取原文件\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
+    
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        return float("nan")
+    
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        return True
+    
+    # 设置节点宽度
+    @classmethod
+    def get_node_width(cls):
+        return 300
     
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_images"
