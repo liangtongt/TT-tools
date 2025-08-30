@@ -1,20 +1,25 @@
 @echo off
-echo Installing ComfyUI Image Sequence Compressor Node...
+chcp 65001 >nul
+echo ================================================
+echo TT img enc 节点安装程序 (Windows)
+echo ================================================
 echo.
 
-REM 检查是否在ComfyUI custom_nodes目录中
-if not exist "..\..\main.py" (
-    echo Error: This script must be run from the ComfyUI custom_nodes directory
-    echo Please navigate to your ComfyUI custom_nodes folder and run this script
+echo 正在检查 Python 环境...
+python --version >nul 2>&1
+if errorlevel 1 (
+    echo 错误: 未找到 Python，请先安装 Python 3.7+
+    echo 下载地址: https://www.python.org/downloads/
     pause
     exit /b 1
 )
 
-echo Installing Python dependencies...
-pip install -r requirements.txt
+echo Python 环境检查通过
+echo.
+
+echo 正在运行安装脚本...
+python install.py
 
 echo.
-echo Installation completed!
-echo Please restart ComfyUI to load the new node.
-echo.
-pause
+echo 安装完成！按任意键退出...
+pause >nul

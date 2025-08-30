@@ -1,21 +1,19 @@
 """
-ComfyUI TT img Node
-TT img 节点 - 将图片序列压缩到一个文件中
+TT img enc - ComfyUI 自定义节点
+自动图片格式转换和文件隐写术
 """
 
-from .image_sequence_compressor import TTImg
+from .tt_img_enc_node import TTImgEncNode
 
-# 注册节点
+# 注册节点类
 NODE_CLASS_MAPPINGS = {
-    "TTImg": TTImg
+    "TT_img_enc": TTImgEncNode
 }
 
+# 注册节点显示名称
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TTImg": "TT img"
+    "TT_img_enc": "TT img enc"
 }
 
-# 节点描述
-WEB_DIRECTORY = "./web"
-__version__ = "1.0.0"
-
-print(f"TT img Node v{__version__} 已加载")
+# 节点分类
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

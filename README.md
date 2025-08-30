@@ -1,98 +1,105 @@
-# ComfyUI TT img Node
+# TT img enc - ComfyUI 节点
 
-这是一个ComfyUI自定义节点，用于将图片序列压缩写入到一个图片文件中，并可以通过Python代码还原这些图片序列。
+## 功能描述
 
-## 功能特性
+TT img enc 是一个 ComfyUI 自定义节点，具有以下功能：
 
-- **智能压缩策略**：
-  - 单张图片：自动编码为JPEG格式，高效压缩
-  - 多张图片：自动编码为MP4视频，大幅减少文件大小
-- **简化使用**：只需输入图片序列，自动生成承载图片
-- **高质量输出**：默认质量100，使用原始尺寸，最大化保证质量
-- 支持多种图片格式（PNG, JPG等）
-- 提供Python还原脚本
-- 可配置压缩质量和尺寸设置
-- 支持元数据存储
-- **高性能**：相比原版本，文件大小减少90%以上，处理速度提升显著
+1. **自动格式转换**：
+   - 输入多张图片 → 自动转换为 MP4 视频
+   - 输入单张图片 → 自动转换为 JPG 格式
+
+2. **造点图片生成**：创建带有随机噪点的图片
+
+3. **文件嵌入**：将转换后的文件（MP4/JPG）嵌入到造点图片中
+
+4. **ZIP 解压**：下载图片后，将文件后缀改为 .zip 即可直接解压出原始文件
 
 ## 安装方法
 
-### 方法1: Git Clone (推荐)
-
+### 方法1：Git Clone（推荐）
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/yourusername/comfyui-image-sequence-compressor.git
-cd comfyui-image-sequence-compressor
-pip install -r requirements.txt
+git clone https://github.com/tttools/tt-img-enc.git
 ```
+然后重启 ComfyUI，节点会自动加载。
 
-然后重启ComfyUI即可。
+### 方法2：手动下载
+1. 下载项目文件
+2. 将整个项目文件夹复制到 ComfyUI 的 `custom_nodes` 目录
+3. 重启 ComfyUI
 
-### 方法2: 手动安装
-
-1. 将整个项目文件夹复制到你的ComfyUI `custom_nodes` 目录
-2. 安装Python依赖：`pip install -r requirements.txt`
-3. 重启ComfyUI
-4. 在节点列表中找到 "TT img" 节点
-
-### 方法3: 使用安装脚本
-
-**Windows:**
+### 方法3：Pip 安装
 ```bash
-cd ComfyUI/custom_nodes/comfyui-image-sequence-compressor
-install.bat
-```
-
-**Linux/macOS:**
-```bash
-cd ComfyUI/custom_nodes/comfyui-image-sequence-compressor
-chmod +x install.sh
-./install.sh
+pip install git+https://github.com/tttools/tt-img-enc.git
 ```
 
 ## 使用方法
 
-### 在ComfyUI中使用
+### 节点参数
 
-1. 添加 "TT img" 节点
-2. 连接输入：
-   - `images`: 需要压缩的图片序列
-3. 设置参数：
-   - `quality`: 压缩质量（1-100，默认100，最高质量）
-   - `use_original_size`: 是否使用原始尺寸（默认True）
-4. 运行工作流，输出为包含压缩数据的图像
+- **images**: 输入的图片（支持多张）
+- **fps**: 视频帧率（1-60，默认30）
+- **quality**: JPG 质量（1-100，默认95）
+- **noise_density**: 噪点密度（0.01-0.5，默认0.1）
+- **noise_size**: 噪点大小（1-5，默认2）
 
-### Python还原脚本
+### 工作流程
 
-使用 `extract_from_image.py` 脚本来从图像中提取压缩的数据：
+1. 连接图片输入到 `images` 端口
+2. 调整其他参数（可选）
+3. 运行工作流
+4. 下载输出的造点图片
+5. 将图片后缀改为 `.zip`
+6. 解压 ZIP 文件获得原始 MP4 或 JPG 文件
 
-```bash
-python extract_from_image.py output_image.png output_directory
+## 技术原理
+
+### 图片转视频
+- 使用 OpenCV 将多张图片合成为 MP4 视频
+- 支持自定义帧率
+- 自动处理 RGB/BGR 颜色空间转换
+
+### 图片转 JPG
+- 使用 Pillow 将图片转换为高质量 JPG 格式
+- 支持自定义质量参数
+
+### 文件嵌入
+- 使用 LSB（最低有效位）隐写术
+- 将 ZIP 文件数据嵌入到图片像素中
+- 支持任意大小的文件（受图片尺寸限制）
+
+### 造点图片
+- 白色背景 + 随机彩色噪点
+- 可调节噪点密度和大小
+- 固定 512x512 像素尺寸
+
+## 注意事项
+
+1. **图片尺寸**：输出图片固定为 512x512 像素
+2. **文件大小限制**：嵌入文件大小受图片像素数量限制
+3. **临时文件**：处理过程中会创建临时文件，完成后自动清理
+4. **错误处理**：如果处理失败，会输出错误提示图片
+
+## 示例工作流
+
+```
+Load Image → TT img enc → Save Image
 ```
 
-**提取结果**：
-- **单张图片**：提取为 `extracted_image.jpg`
-- **多张图片**：提取为 `extracted_sequence.mp4` 和单独的帧文件 `extracted_frame_XXXX.jpg`
+## 故障排除
 
-**注意**: 现在节点直接输出图像，而不是保存文件。你可以：
-1. 在ComfyUI中查看输出的图像
-2. 保存图像到本地
-3. 使用Python脚本从保存的图像中提取原始数据
+### 常见问题
 
-## 文件结构
+1. **依赖缺失**：确保安装了所有必需的 Python 包
+2. **内存不足**：处理大量图片时可能需要更多内存
+3. **文件权限**：确保 ComfyUI 有权限创建临时目录
 
-- `image_sequence_compressor.py` - ComfyUI TT img节点主文件
-- `extract_from_image.py` - 从图像中提取压缩数据的Python脚本
-- `extract_images.py` - 从压缩文件中提取的Python脚本（兼容旧版本）
-- `requirements.txt` - Python依赖
-- `example_workflow.json` - 示例工作流
-- `test_images/` - 测试图片目录
+### 错误信息
 
-## 依赖
+- 检查 ComfyUI 控制台的错误输出
+- 验证输入图片格式是否正确
+- 确认输出目录有写入权限
 
-- ComfyUI
-- Pillow (PIL)
-- numpy
-- opencv-python
-- base64
-- json
+## 更新日志
+
+- v1.0.0: 初始版本，支持基本的图片转视频/图片功能
