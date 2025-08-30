@@ -7,34 +7,11 @@ from typing import List
 
 class TTImgEncNode:
     def __init__(self):
-        self.output_dir = "output"
         self.temp_dir = "temp"
         
         # 创建必要的目录
-        os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
-    
-    # 添加节点描述，包含超链接
-    DESCRIPTION = """
-    <a href="https://github.com/your-repo/tt_img" target="_blank">📖 查看文档</a> | 
-    <a href="https://example.com/tutorial" target="_blank">🎥 使用教程</a> | 
-    <a href="https://discord.gg/your-server" target="_blank">💬 加入社区</a>
-    """
-    
-    # 节点标题（显示在节点顶部）
-    TITLE = "TT Image Encoder"
-    
-    # 节点图标（可以使用emoji或Unicode字符）
-    ICON = "🖼️"
-    
-    # 节点版本信息
-    VERSION = "1.0.0"
-    
-    # 作者信息
-    AUTHOR = "Your Name"
-    
-    # 许可证信息
-    LICENSE = "MIT"
+       
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -43,6 +20,9 @@ class TTImgEncNode:
                 "images": ("IMAGE",),
                 "fps": ("FLOAT", {"default": 16.0, "min": 0.1, "max": 120.0}),
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
+            },
+            "optional": {
+                "usage_notes": ("STRING", {"default": "使用说明：\n1. 输入多张图片自动转为MP4视频\n2. 输入单张图片自动转为JPG格式\n3. 文件将嵌入到生成的图片中\n4. 下载后可用extract_zip.py提取", "multiline": True}),
             }
         }
     
@@ -51,7 +31,7 @@ class TTImgEncNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, fps=16.0, quality=95):
+    def process_images(self, images, fps=16.0, quality=95, usage_notes=None):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片
         """
@@ -101,6 +81,14 @@ class TTImgEncNode:
             output_tensor = torch.from_numpy(output_image).float() / 255.0
             output_tensor = output_tensor.unsqueeze(0)  # 添加batch维度
             
+            # 如果有使用说明，在控制台输出
+            if usage_notes:
+                print(f"=== TT img enc 使用说明 ===")
+                print(usage_notes)
+                print(f"=== 处理完成 ===")
+                print(f"输出图片尺寸: {output_image.shape[1]}x{output_image.shape[0]}")
+                print(f"文件类型: {file_extension}")
+            
             return (output_tensor,)
             
         except Exception as e:
@@ -109,6 +97,12 @@ class TTImgEncNode:
             error_image = self._create_error_image(512)
             error_tensor = torch.from_numpy(error_image).float() / 255.0
             error_tensor = error_tensor.unsqueeze(0)  # 添加batch维度
+            
+            # 如果有使用说明，在错误时也输出
+            if usage_notes:
+                print(f"=== 处理失败，但请参考使用说明 ===")
+                print(usage_notes)
+            
             return (error_tensor,)
     
     def _images_to_mp4(self, images: List[np.ndarray], fps: float) -> str:
