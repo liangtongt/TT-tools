@@ -7,6 +7,8 @@ import io
 import zlib
 from typing import List, Dict, Any, Optional
 import torch
+import cv2
+import tempfile
 
 class ImageSequenceCompressor:
     """图片序列压缩器节点 - 将图片序列压缩并嵌入到指定图像中"""
@@ -45,67 +47,28 @@ class ImageSequenceCompressor:
             "quality": quality,
             "format": format,
             "timestamp": str(np.datetime64('now')),
-            "images": []
+            "type": "single" if len(images) == 1 else "sequence"
         }
         
-        for i, img_array in enumerate(images):
-            # 处理Tensor对象，转换为numpy数组
-            if torch.is_tensor(img_array):
-                img_array = img_array.cpu().numpy()
-                # 处理批次维度
-                if len(img_array.shape) == 4:
-                    # 如果是批次格式 (B, C, H, W)，取第一张图片
-                    img_array = img_array[0]
-                # Tensor通常是CHW格式，需要转换为HWC格式
-                if len(img_array.shape) == 3 and img_array.shape[0] == 3:
-                    img_array = np.transpose(img_array, (1, 2, 0))
-            else:
-                # 处理numpy数组的批次维度
-                if len(img_array.shape) == 4:
-                    # 如果是批次格式 (B, H, W, C)，取第一张图片
-                    img_array = img_array[0]
-            
-            # 转换numpy数组为PIL图像
-            if img_array.dtype != np.uint8:
-                img_array = (img_array * 255).astype(np.uint8)
-            
-            # 确保图像是3通道RGB
-            if len(img_array.shape) == 3 and img_array.shape[2] == 3:
-                pil_img = Image.fromarray(img_array, 'RGB')
-            elif len(img_array.shape) == 3 and img_array.shape[2] == 4:
-                pil_img = Image.fromarray(img_array, 'RGBA')
-                pil_img = pil_img.convert('RGB')
-            else:
-                pil_img = Image.fromarray(img_array, 'RGB')
-            
-            # 压缩图像
-            img_buffer = io.BytesIO()
-            if format == "PNG":
-                pil_img.save(img_buffer, format="PNG", optimize=True, compress_level=compression_level)
-            elif format == "JPEG":
-                pil_img.save(img_buffer, format="JPEG", quality=quality, optimize=True)
-            elif format == "WEBP":
-                pil_img.save(img_buffer, format="WEBP", quality=quality, method=compression_level)
-            
-            img_data = img_buffer.getvalue()
-            compressed_data = zlib.compress(img_data, level=compression_level)
-            base64_data = base64.b64encode(compressed_data).decode('utf-8')
-            
-            image_data_list.append(base64_data)
-            
-            # 添加元数据
-            metadata["images"].append({
-                "index": i,
-                "size": len(img_data),
-                "compressed_size": len(compressed_data),
-                "dimensions": pil_img.size,
-                "mode": pil_img.mode
-            })
+        # 根据图片数量选择处理方式
+        if len(images) == 1:
+            # 单张图片：编码成JPEG
+            compressed_data = self._compress_single_image(images[0], quality)
+            metadata["type"] = "single"
+            metadata["format"] = "JPEG"
+        else:
+            # 多张图片：编码成MP4
+            compressed_data = self._compress_image_sequence(images, quality)
+            metadata["type"] = "sequence"
+            metadata["format"] = "MP4"
+        
+        # 将压缩数据编码为base64
+        base64_data = base64.b64encode(compressed_data).decode('utf-8')
         
         # 创建包含所有数据的字典
         combined_data = {
             "metadata": metadata,
-            "images": image_data_list
+            "data": base64_data
         }
         
         # 将数据编码为JSON字符串
@@ -208,5 +171,102 @@ class ImageSequenceCompressor:
                 new_image.putpixel((x, y), (byte_val, byte_val, byte_val))
         
         return new_image
+    
+    def _compress_single_image(self, img_array, quality):
+        """压缩单张图片为JPEG格式"""
+        # 处理Tensor对象，转换为numpy数组
+        if torch.is_tensor(img_array):
+            img_array = img_array.cpu().numpy()
+            # 处理批次维度
+            if len(img_array.shape) == 4:
+                img_array = img_array[0]
+            # Tensor通常是CHW格式，需要转换为HWC格式
+            if len(img_array.shape) == 3 and img_array.shape[0] == 3:
+                img_array = np.transpose(img_array, (1, 2, 0))
+        else:
+            # 处理numpy数组的批次维度
+            if len(img_array.shape) == 4:
+                img_array = img_array[0]
+        
+        # 转换numpy数组为PIL图像
+        if img_array.dtype != np.uint8:
+            img_array = (img_array * 255).astype(np.uint8)
+        
+        # 确保图像是3通道RGB
+        if len(img_array.shape) == 3 and img_array.shape[2] == 3:
+            pil_img = Image.fromarray(img_array, 'RGB')
+        elif len(img_array.shape) == 3 and img_array.shape[2] == 4:
+            pil_img = Image.fromarray(img_array, 'RGBA')
+            pil_img = pil_img.convert('RGB')
+        else:
+            pil_img = Image.fromarray(img_array, 'RGB')
+        
+        # 压缩为JPEG
+        img_buffer = io.BytesIO()
+        pil_img.save(img_buffer, format="JPEG", quality=quality, optimize=True)
+        return img_buffer.getvalue()
+    
+    def _compress_image_sequence(self, images, quality):
+        """压缩图片序列为MP4格式"""
+        # 创建临时文件
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as temp_file:
+            temp_path = temp_file.name
+        
+        try:
+            # 获取第一张图片的尺寸
+            first_img = self._tensor_to_numpy(images[0])
+            height, width = first_img.shape[:2]
+            
+            # 创建视频写入器
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(temp_path, fourcc, 30.0, (width, height))
+            
+            # 写入每一帧
+            for img_array in images:
+                # 转换为numpy数组
+                img_np = self._tensor_to_numpy(img_array)
+                
+                # 确保是BGR格式（OpenCV需要）
+                if len(img_np.shape) == 3 and img_np.shape[2] == 3:
+                    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+                else:
+                    img_bgr = img_np
+                
+                out.write(img_bgr)
+            
+            out.release()
+            
+            # 读取压缩后的MP4文件
+            with open(temp_path, 'rb') as f:
+                mp4_data = f.read()
+            
+            return mp4_data
+            
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def _tensor_to_numpy(self, img_array):
+        """将Tensor或numpy数组转换为标准numpy数组"""
+        # 处理Tensor对象，转换为numpy数组
+        if torch.is_tensor(img_array):
+            img_array = img_array.cpu().numpy()
+            # 处理批次维度
+            if len(img_array.shape) == 4:
+                img_array = img_array[0]
+            # Tensor通常是CHW格式，需要转换为HWC格式
+            if len(img_array.shape) == 3 and img_array.shape[0] == 3:
+                img_array = np.transpose(img_array, (1, 2, 0))
+        else:
+            # 处理numpy数组的批次维度
+            if len(img_array.shape) == 4:
+                img_array = img_array[0]
+        
+        # 转换数值范围
+        if img_array.dtype != np.uint8:
+            img_array = (img_array * 255).astype(np.uint8)
+        
+        return img_array
 
 # 节点注册已移至 __init__.py

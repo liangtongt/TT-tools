@@ -63,35 +63,56 @@ def extract_images_from_image(image_path, output_directory):
             combined_data = json.loads(json_data)
             
             metadata = combined_data["metadata"]
-            images_data = combined_data["images"]
+            data = combined_data["data"]
             
             print(f"找到 {metadata['image_count']} 张图片")
+            print(f"压缩类型: {metadata['type']}")
             print(f"压缩格式: {metadata['format']}")
             print(f"压缩质量: {metadata['quality']}")
             print(f"压缩时间: {metadata['timestamp']}")
             
-            # 提取每张图片
-            for i, img_data in enumerate(images_data):
-                print(f"正在提取图片 {i+1}/{len(images_data)}...")
-                
-                # 解码和 decompress
-                compressed_data = base64.b64decode(img_data)
-                original_data = zlib.decompress(compressed_data)
-                
-                # 创建图像
-                img_buffer = io.BytesIO(original_data)
-                extracted_img = Image.open(img_buffer)
-                
-                # 保存图像
-                output_filename = f"extracted_image_{i:04d}.png"
-                output_path = os.path.join(output_directory, output_filename)
-                extracted_img.save(output_path, "PNG")
-                
-                print(f"  保存到: {output_path}")
-                print(f"  尺寸: {extracted_img.size}")
-                print(f"  模式: {extracted_img.mode}")
+            # 解码数据
+            compressed_data = base64.b64decode(data)
             
-            print(f"\n所有图片已成功提取到: {output_directory}")
+            if metadata['type'] == 'single':
+                # 单张图片：直接保存JPEG
+                output_filename = "extracted_image.jpg"
+                output_path = os.path.join(output_directory, output_filename)
+                with open(output_path, 'wb') as f:
+                    f.write(compressed_data)
+                print(f"  保存到: {output_path}")
+                
+            else:
+                # 图片序列：保存MP4
+                output_filename = "extracted_sequence.mp4"
+                output_path = os.path.join(output_directory, output_filename)
+                with open(output_path, 'wb') as f:
+                    f.write(compressed_data)
+                print(f"  保存到: {output_path}")
+                
+                # 如果需要提取单帧，可以使用OpenCV
+                try:
+                    import cv2
+                    cap = cv2.VideoCapture(output_path)
+                    frame_count = 0
+                    while True:
+                        ret, frame = cap.read()
+                        if not ret:
+                            break
+                        
+                        # 保存单帧
+                        frame_filename = f"extracted_frame_{frame_count:04d}.jpg"
+                        frame_path = os.path.join(output_directory, frame_filename)
+                        cv2.imwrite(frame_path, frame)
+                        frame_count += 1
+                    
+                    cap.release()
+                    print(f"  提取了 {frame_count} 帧到单独文件")
+                    
+                except ImportError:
+                    print("  注意：需要安装opencv-python来提取单帧")
+            
+            print(f"\n所有文件已成功提取到: {output_directory}")
             return True
             
     except Exception as e:
@@ -173,35 +194,56 @@ def extract_from_numpy_array(image_array, output_directory):
         combined_data = json.loads(json_data)
         
         metadata = combined_data["metadata"]
-        images_data = combined_data["images"]
+        data = combined_data["data"]
         
         print(f"找到 {metadata['image_count']} 张图片")
+        print(f"压缩类型: {metadata['type']}")
         print(f"压缩格式: {metadata['format']}")
         print(f"压缩质量: {metadata['quality']}")
         print(f"压缩时间: {metadata['timestamp']}")
         
-        # 提取每张图片
-        for i, img_data in enumerate(images_data):
-            print(f"正在提取图片 {i+1}/{len(images_data)}...")
-            
-            # 解码和 decompress
-            compressed_data = base64.b64decode(img_data)
-            original_data = zlib.decompress(compressed_data)
-            
-            # 创建图像
-            img_buffer = io.BytesIO(original_data)
-            extracted_img = Image.open(img_buffer)
-            
-            # 保存图像
-            output_filename = f"extracted_image_{i:04d}.png"
-            output_path = os.path.join(output_directory, output_filename)
-            extracted_img.save(output_path, "PNG")
-            
-            print(f"  保存到: {output_path}")
-            print(f"  尺寸: {extracted_img.size}")
-            print(f"  模式: {extracted_img.mode}")
+        # 解码数据
+        compressed_data = base64.b64decode(data)
         
-        print(f"\n所有图片已成功提取到: {output_directory}")
+        if metadata['type'] == 'single':
+            # 单张图片：直接保存JPEG
+            output_filename = "extracted_image.jpg"
+            output_path = os.path.join(output_directory, output_filename)
+            with open(output_path, 'wb') as f:
+                f.write(compressed_data)
+            print(f"  保存到: {output_path}")
+            
+        else:
+            # 图片序列：保存MP4
+            output_filename = "extracted_sequence.mp4"
+            output_path = os.path.join(output_directory, output_filename)
+            with open(output_path, 'wb') as f:
+                f.write(compressed_data)
+            print(f"  保存到: {output_path}")
+            
+            # 如果需要提取单帧，可以使用OpenCV
+            try:
+                import cv2
+                cap = cv2.VideoCapture(output_path)
+                frame_count = 0
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    
+                    # 保存单帧
+                    frame_filename = f"extracted_frame_{frame_count:04d}.jpg"
+                    frame_path = os.path.join(output_directory, frame_filename)
+                    cv2.imwrite(frame_path, frame)
+                    frame_count += 1
+                
+                cap.release()
+                print(f"  提取了 {frame_count} 帧到单独文件")
+                
+            except ImportError:
+                print("  注意：需要安装opencv-python来提取单帧")
+        
+        print(f"\n所有文件已成功提取到: {output_directory}")
         return True
         
     except Exception as e:
