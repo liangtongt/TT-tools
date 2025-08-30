@@ -152,9 +152,21 @@ class TTImg:
         required_pixels = data_length + 4  # +4 for length info
         
         if total_pixels < required_pixels:
-            # 如果图像太小，扩展图像
-            new_width = max(width, int(required_pixels ** 0.5) + 1)
-            new_height = max(height, (required_pixels + new_width - 1) // new_width)
+            # 如果图像太小，扩展图像，但限制最大尺寸
+            required_pixels = data_length + 4  # +4 for length info
+            
+            # 计算合理的图像尺寸，限制最大尺寸为2048x2048
+            max_dimension = 2048
+            new_width = min(max(width, int(required_pixels ** 0.5) + 1), max_dimension)
+            new_height = min(max(height, (required_pixels + new_width - 1) // new_width), max_dimension)
+            
+            # 如果仍然不够，使用更紧凑的布局
+            if new_width * new_height < required_pixels:
+                new_width = min(int(required_pixels ** 0.5) + 1, max_dimension)
+                new_height = min((required_pixels + new_width - 1) // new_width, max_dimension)
+            
+            # 调试信息已移除，保持代码清洁
+            
             new_image = Image.new('RGB', (new_width, new_height), (255, 255, 255))
             new_image.paste(image, (0, 0))
             width, height = new_image.size
