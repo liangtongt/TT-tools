@@ -6,6 +6,7 @@ from PIL import Image
 import io
 import zlib
 from typing import List, Dict, Any, Optional
+import torch
 
 class ImageSequenceCompressor:
     """图片序列压缩器节点 - 将图片序列压缩并嵌入到指定图像中"""
@@ -48,6 +49,13 @@ class ImageSequenceCompressor:
         }
         
         for i, img_array in enumerate(images):
+            # 处理Tensor对象，转换为numpy数组
+            if torch.is_tensor(img_array):
+                img_array = img_array.cpu().numpy()
+                # Tensor通常是CHW格式，需要转换为HWC格式
+                if len(img_array.shape) == 3 and img_array.shape[0] == 3:
+                    img_array = np.transpose(img_array, (1, 2, 0))
+            
             # 转换numpy数组为PIL图像
             if img_array.dtype != np.uint8:
                 img_array = (img_array * 255).astype(np.uint8)
@@ -95,10 +103,19 @@ class ImageSequenceCompressor:
         json_data = json.dumps(combined_data, indent=2)
         
         # 使用输入的image作为基础图像
-        if image.dtype != np.uint8:
-            base_img_array = (image * 255).astype(np.uint8)
+        # 处理Tensor对象，转换为numpy数组
+        if torch.is_tensor(image):
+            base_img_array = image.cpu().numpy()
+            # Tensor通常是CHW格式，需要转换为HWC格式
+            if len(base_img_array.shape) == 3 and base_img_array.shape[0] == 3:
+                base_img_array = np.transpose(base_img_array, (1, 2, 0))
         else:
             base_img_array = image
+        
+        if base_img_array.dtype != np.uint8:
+            base_img_array = (base_img_array * 255).astype(np.uint8)
+        else:
+            base_img_array = base_img_array
         
         # 确保图像是3通道RGB
         if len(base_img_array.shape) == 3 and base_img_array.shape[2] == 3:
@@ -113,14 +130,29 @@ class ImageSequenceCompressor:
         final_image = self._embed_data_in_image(base_img, json_data)
         
         # 转换回numpy数组格式，保持与输入相同的数值范围
-        if image.dtype != np.uint8:
-            # 如果输入是0-1范围，输出也保持0-1范围
-            final_array = np.array(final_image).astype(np.float32) / 255.0
+        if torch.is_tensor(image):
+            # 如果输入是Tensor，检查数值范围
+            if image.max() <= 1.0:
+                # 如果输入是0-1范围，输出也保持0-1范围
+                final_array = np.array(final_image).astype(np.float32) / 255.0
+            else:
+                # 如果输入是0-255范围，输出也保持0-255范围
+                final_array = np.array(final_image).astype(np.uint8)
         else:
-            # 如果输入是0-255范围，输出也保持0-255范围
-            final_array = np.array(final_image)
+            # 如果输入是numpy数组
+            if image.dtype != np.uint8:
+                # 如果输入是0-1范围，输出也保持0-1范围
+                final_array = np.array(final_image).astype(np.float32) / 255.0
+            else:
+                # 如果输入是0-255范围，输出也保持0-255范围
+                final_array = np.array(final_image).astype(np.uint8)
         
-        return (final_array,)
+        # 转换为Tensor格式返回，确保是CHW格式
+        if len(final_array.shape) == 3 and final_array.shape[2] == 3:
+            # 如果是HWC格式，转换为CHW格式
+            final_array = np.transpose(final_array, (2, 0, 1))
+        
+        return (torch.from_numpy(final_array),)
     
     def _embed_data_in_image(self, image, data):
         """将数据嵌入到图像中"""
