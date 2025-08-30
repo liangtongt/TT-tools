@@ -85,32 +85,29 @@ class TTImg:
         # 将JSON数据嵌入到图像中
         final_image = self._embed_data_in_image(container_image, json_data)
         
-        # 完全重写输出格式处理，确保符合ComfyUI要求
+        # 简化并修复输出格式处理，确保100%符合ComfyUI要求
         # 将PIL图像转换为numpy数组
         final_array = np.array(final_image)
         
-        # 确保是RGB格式
-        if len(final_array.shape) == 3 and final_array.shape[2] == 3:
-            # 已经是RGB格式，转换为CHW
-            final_array = np.transpose(final_array, (2, 0, 1))
-        elif len(final_array.shape) == 3 and final_array.shape[2] == 4:
-            # RGBA格式，转换为RGB
-            final_array = final_array[:, :, :3]
-            final_array = np.transpose(final_array, (2, 0, 1))
-        elif len(final_array.shape) == 3 and final_array.shape[0] == 3:
-            # 已经是CHW格式
-            pass
-        elif len(final_array.shape) == 2:
-            # 灰度图像，转换为3通道
-            final_array = np.stack([final_array] * 3, axis=0)
-        else:
-            # 其他情况，强制转换为3通道
-            if len(final_array.shape) == 3:
-                final_array = np.stack([final_array[:, :, 0]] * 3, axis=0)
+        # 强制转换为3通道RGB格式
+        if len(final_array.shape) == 3:
+            if final_array.shape[2] == 3:  # HWC格式
+                # 转换为CHW格式
+                final_array = np.transpose(final_array, (2, 0, 1))
+            elif final_array.shape[2] == 4:  # RGBA格式
+                # 转换为RGB，然后转换为CHW
+                final_array = final_array[:, :, :3]
+                final_array = np.transpose(final_array, (2, 0, 1))
+            elif final_array.shape[0] == 3:  # 已经是CHW格式
+                pass
             else:
-                final_array = np.stack([final_array] * 3, axis=0)
+                # 其他情况，强制转换为3通道
+                final_array = np.stack([final_array[:, :, 0]] * 3, axis=0)
+        else:
+            # 如果不是3D，强制转换为3通道
+            final_array = np.stack([final_array] * 3, axis=0)
         
-        # 确保是3通道
+        # 确保是3通道CHW格式
         if final_array.shape[0] != 3:
             if len(final_array.shape) == 3 and final_array.shape[2] == 3:
                 final_array = np.transpose(final_array, (2, 0, 1))
@@ -129,11 +126,19 @@ class TTImg:
         # 添加批次维度 (1, C, H, W)
         final_tensor = final_tensor.unsqueeze(0)
         
-        # 最终验证输出格式
-        if final_tensor.shape != (1, 3, final_array.shape[1], final_array.shape[2]):
-            print(f"警告：输出形状不正确: {final_tensor.shape}")
-            # 强制修正
-            final_tensor = final_tensor.view(1, 3, final_array.shape[1], final_array.shape[2])
+        # 最终验证和强制修正输出格式
+        expected_shape = (1, 3, final_array.shape[1], final_array.shape[2])
+        if final_tensor.shape != expected_shape:
+            print(f"警告：输出形状不正确: {final_tensor.shape}，强制修正为: {expected_shape}")
+            try:
+                final_tensor = final_tensor.view(expected_shape)
+            except:
+                # 如果view失败，重新创建tensor
+                final_tensor = torch.zeros(expected_shape, dtype=torch.float32)
+                # 复制数据
+                min_h = min(final_tensor.shape[2], final_array.shape[1])
+                min_w = min(final_tensor.shape[3], final_array.shape[2])
+                final_tensor[0, :, :min_h, :min_w] = torch.from_numpy(final_array[:, :min_h, :min_w])
         
         return (final_tensor,)
     
