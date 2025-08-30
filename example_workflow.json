@@ -67,7 +67,7 @@
     },
     {
       "id": 5,
-      "type": "ImageSequenceCompressor",
+      "type": "TTImg",
       "pos": [700, 150],
       "size": {"0": 210, "1": 150},
       "flags": {},

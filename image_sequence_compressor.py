@@ -10,8 +10,8 @@ import torch
 import cv2
 import tempfile
 
-class ImageSequenceCompressor:
-    """图片序列压缩器节点 - 将图片序列压缩并嵌入到指定图像中"""
+class TTImg:
+    """TT img - 图片序列压缩器节点"""
     
     def __init__(self):
         self.compression_level = 6
@@ -31,7 +31,7 @@ class ImageSequenceCompressor:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "compress_sequence"
-    CATEGORY = "image/compression"
+    CATEGORY = "TT"
     
     def compress_sequence(self, images, quality, use_original_size):
         """将图片序列压缩并嵌入到自动生成的承载图像中"""
@@ -91,7 +91,12 @@ class ImageSequenceCompressor:
             # 如果是HWC格式，转换为CHW格式
             final_array = np.transpose(final_array, (2, 0, 1))
         
-        return (torch.from_numpy(final_array),)
+        # 确保输出是单个图像，不是批次
+        final_tensor = torch.from_numpy(final_array)
+        # 添加批次维度 (1, C, H, W)
+        final_tensor = final_tensor.unsqueeze(0)
+        
+        return (final_tensor,)
     
     def _embed_data_in_image(self, image, data):
         """将数据嵌入到图像中（最小化像素修改）"""

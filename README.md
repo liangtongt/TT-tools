@@ -1,4 +1,4 @@
-# ComfyUI Image Sequence Compression Node
+# ComfyUI TT img Node
 
 这是一个ComfyUI自定义节点，用于将图片序列压缩写入到一个图片文件中，并可以通过Python代码还原这些图片序列。
 
@@ -33,7 +33,7 @@ pip install -r requirements.txt
 1. 将整个项目文件夹复制到你的ComfyUI `custom_nodes` 目录
 2. 安装Python依赖：`pip install -r requirements.txt`
 3. 重启ComfyUI
-4. 在节点列表中找到 "Image Sequence Compressor" 节点
+4. 在节点列表中找到 "TT img" 节点
 
 ### 方法3: 使用安装脚本
 
@@ -54,7 +54,7 @@ chmod +x install.sh
 
 ### 在ComfyUI中使用
 
-1. 添加 "Image Sequence Compressor" 节点
+1. 添加 "TT img" 节点
 2. 连接输入：
    - `images`: 需要压缩的图片序列
 3. 设置参数：
@@ -81,7 +81,7 @@ python extract_from_image.py output_image.png output_directory
 
 ## 文件结构
 
-- `image_sequence_compressor.py` - ComfyUI节点主文件
+- `image_sequence_compressor.py` - ComfyUI TT img节点主文件
 - `extract_from_image.py` - 从图像中提取压缩数据的Python脚本
 - `extract_images.py` - 从压缩文件中提取的Python脚本（兼容旧版本）
 - `requirements.txt` - Python依赖

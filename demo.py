@@ -18,11 +18,11 @@ def demo_simplified_compression():
     print("=== ComfyUI 图片序列压缩节点演示 ===\n")
     
     try:
-        from image_sequence_compressor import ImageSequenceCompressor
+        from image_sequence_compressor import TTImg
         from extract_from_image import extract_from_numpy_array
         
         # 创建节点实例
-        compressor = ImageSequenceCompressor()
+        compressor = TTImg()
         
         print("🎯 节点特性:")
         print("  ✅ 只需输入图片序列，自动生成承载图片")
@@ -82,7 +82,7 @@ def demo_simplified_compression():
         
         print("\n✅ 演示完成！")
         print("\n📋 使用方法:")
-        print("  1. 在ComfyUI中添加 'Image Sequence Compressor' 节点")
+        print("  1. 在ComfyUI中添加 'TT img' 节点")
         print("  2. 连接图片序列到 'images' 输入")
         print("  3. 设置质量参数 (默认100，最高质量)")
         print("  4. 设置尺寸参数 (默认使用原始尺寸)")
