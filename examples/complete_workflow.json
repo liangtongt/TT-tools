@@ -1,0 +1,108 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [100, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"images": [], "type": "IMAGE"},
+        "MASK": {"images": [], "type": "MASK"}
+      },
+      "properties": {},
+      "widgets_values": ["test.png"]
+    },
+    {
+      "id": 2,
+      "type": "TTImgEncNode",
+      "pos": [400, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": {
+        "images": ["1", 0]
+      },
+      "outputs": {
+        "IMAGE": {"images": [], "type": "IMAGE"}
+      },
+      "properties": {},
+      "widgets_values": [16.0, 95]
+    },
+    {
+      "id": 3,
+      "type": "SaveImage",
+      "pos": [700, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": {
+        "images": ["2", 0],
+        "filename_prefix": ["4", 0]
+      },
+      "outputs": {},
+      "properties": {},
+      "widgets_values": ["TT_img_encoded"]
+    },
+    {
+      "id": 4,
+      "type": "PrimitiveNode",
+      "pos": [700, 200],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "outputs": {
+        "STRING": {"type": "STRING"}
+      },
+      "properties": {},
+      "widgets_values": ["TT_img_encoded"]
+    },
+    {
+      "id": 5,
+      "type": "TTImgDecNode",
+      "pos": [1000, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": {
+        "image": ["2", 0]
+      },
+      "outputs": {
+        "status": {"type": "STRING"},
+        "file_path": {"type": "STRING"}
+      },
+      "properties": {},
+      "widgets_values": ["extracted_file"]
+    },
+    {
+      "id": 6,
+      "type": "PreviewText",
+      "pos": [1300, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": {
+        "text": ["5", 0]
+      },
+      "outputs": {},
+      "properties": {},
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [1, 1, 0, 2, "images"],
+    [2, 2, 0, 3, "images"],
+    [3, 4, 0, 3, "filename_prefix"],
+    [4, 2, 0, 5, "image"],
+    [5, 5, 0, 6, "text"]
+  ]
+}

@@ -8,8 +8,6 @@ import os
 import sys
 import numpy as np
 from PIL import Image
-import zipfile
-import io
 
 def extract_file_from_image(image_path: str, output_path: str = None) -> bool:
     """

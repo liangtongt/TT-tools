@@ -25,6 +25,8 @@ MANIFEST
 *.manifest
 *.spec
 
+extract_zip.py
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
@@ -108,6 +110,7 @@ temp/
 *.mp4
 *.avi
 *.mov
+*.exe
 
 # IDE
 .vscode/
