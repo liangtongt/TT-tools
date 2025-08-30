@@ -22,7 +22,7 @@ class TTImgEncNode:
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "使用说明：\n1. 输入多张图片自动转为MP4视频\n2. 输入单张图片自动转为JPG格式\n3. 文件将嵌入到生成的图片中\n4. 下载后可用extract_zip.py提取", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "  利用图片的像素信息保存视频或图片，配合解码本地解码，达到破限的目的/nB站：我是小斯呀", "multiline": True}),
             }
         }
     
