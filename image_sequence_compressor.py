@@ -52,9 +52,18 @@ class ImageSequenceCompressor:
             # 处理Tensor对象，转换为numpy数组
             if torch.is_tensor(img_array):
                 img_array = img_array.cpu().numpy()
+                # 处理批次维度
+                if len(img_array.shape) == 4:
+                    # 如果是批次格式 (B, C, H, W)，取第一张图片
+                    img_array = img_array[0]
                 # Tensor通常是CHW格式，需要转换为HWC格式
                 if len(img_array.shape) == 3 and img_array.shape[0] == 3:
                     img_array = np.transpose(img_array, (1, 2, 0))
+            else:
+                # 处理numpy数组的批次维度
+                if len(img_array.shape) == 4:
+                    # 如果是批次格式 (B, H, W, C)，取第一张图片
+                    img_array = img_array[0]
             
             # 转换numpy数组为PIL图像
             if img_array.dtype != np.uint8:
@@ -106,11 +115,19 @@ class ImageSequenceCompressor:
         # 处理Tensor对象，转换为numpy数组
         if torch.is_tensor(image):
             base_img_array = image.cpu().numpy()
+            # 处理批次维度
+            if len(base_img_array.shape) == 4:
+                # 如果是批次格式 (B, C, H, W)，取第一张图片
+                base_img_array = base_img_array[0]
             # Tensor通常是CHW格式，需要转换为HWC格式
             if len(base_img_array.shape) == 3 and base_img_array.shape[0] == 3:
                 base_img_array = np.transpose(base_img_array, (1, 2, 0))
         else:
             base_img_array = image
+            # 处理numpy数组的批次维度
+            if len(base_img_array.shape) == 4:
+                # 如果是批次格式 (B, H, W, C)，取第一张图片
+                base_img_array = base_img_array[0]
         
         if base_img_array.dtype != np.uint8:
             base_img_array = (base_img_array * 255).astype(np.uint8)
