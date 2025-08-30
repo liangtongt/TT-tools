@@ -85,32 +85,55 @@ class TTImg:
         # 将JSON数据嵌入到图像中
         final_image = self._embed_data_in_image(container_image, json_data)
         
-        # 转换为Tensor格式返回，确保是CHW格式
-        final_array = np.array(final_image).astype(np.float32) / 255.0
-        if len(final_array.shape) == 3 and final_array.shape[2] == 3:
-            # 如果是HWC格式，转换为CHW格式
-            final_array = np.transpose(final_array, (2, 0, 1))
+        # 完全重写输出格式处理，确保符合ComfyUI要求
+        # 将PIL图像转换为numpy数组
+        final_array = np.array(final_image)
         
-        # 确保输出是标准的图像格式 (1, C, H, W)
-        # 检查并确保是3通道RGB图像
-        if len(final_array.shape) == 3:
-            if final_array.shape[0] == 3:  # 已经是CHW格式
-                pass
-            elif final_array.shape[2] == 3:  # 需要转换为CHW格式
+        # 确保是RGB格式
+        if len(final_array.shape) == 3 and final_array.shape[2] == 3:
+            # 已经是RGB格式，转换为CHW
+            final_array = np.transpose(final_array, (2, 0, 1))
+        elif len(final_array.shape) == 3 and final_array.shape[2] == 4:
+            # RGBA格式，转换为RGB
+            final_array = final_array[:, :, :3]
+            final_array = np.transpose(final_array, (2, 0, 1))
+        elif len(final_array.shape) == 3 and final_array.shape[0] == 3:
+            # 已经是CHW格式
+            pass
+        elif len(final_array.shape) == 2:
+            # 灰度图像，转换为3通道
+            final_array = np.stack([final_array] * 3, axis=0)
+        else:
+            # 其他情况，强制转换为3通道
+            if len(final_array.shape) == 3:
+                final_array = np.stack([final_array[:, :, 0]] * 3, axis=0)
+            else:
+                final_array = np.stack([final_array] * 3, axis=0)
+        
+        # 确保是3通道
+        if final_array.shape[0] != 3:
+            if len(final_array.shape) == 3 and final_array.shape[2] == 3:
                 final_array = np.transpose(final_array, (2, 0, 1))
             else:
-                # 如果不是3通道，创建3通道图像
                 final_array = np.stack([final_array[:, :, 0]] * 3, axis=0)
-        else:
-            # 如果不是3D，创建3通道图像
-            final_array = np.stack([final_array] * 3, axis=0)
+        
+        # 转换为float32并归一化到0-1范围
+        final_array = final_array.astype(np.float32) / 255.0
         
         # 确保数值范围在0-1之间
         final_array = np.clip(final_array, 0.0, 1.0)
         
-        # 转换为Tensor并添加批次维度
+        # 转换为Tensor
         final_tensor = torch.from_numpy(final_array).float()
+        
+        # 添加批次维度 (1, C, H, W)
         final_tensor = final_tensor.unsqueeze(0)
+        
+        # 最终验证输出格式
+        if final_tensor.shape != (1, 3, final_array.shape[1], final_array.shape[2]):
+            print(f"警告：输出形状不正确: {final_tensor.shape}")
+            # 强制修正
+            final_tensor = final_tensor.view(1, 3, final_array.shape[1], final_array.shape[2])
         
         return (final_tensor,)
     
