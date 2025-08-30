@@ -1,13 +1,9 @@
 import os
-import tempfile
-import zipfile
-import base64
-from PIL import Image, ImageDraw
+from PIL import Image
 import numpy as np
 import cv2
 import torch
-from typing import List, Union, Tuple
-import io
+from typing import List
 
 class TTImgEncNode:
     def __init__(self):
@@ -23,7 +19,7 @@ class TTImgEncNode:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "fps": ("INT", {"default": 30, "min": 1, "max": 60}),
+                "fps": ("INT", {"default":16, "min": 1, "max": 60}),
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             }
         }
@@ -33,7 +29,7 @@ class TTImgEncNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, fps=30, quality=95):
+    def process_images(self, images, fps=16, quality=95):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片
         """
@@ -160,16 +156,7 @@ class TTImgEncNode:
         
         return embedded_image
     
-    def _create_zip_with_file(self, file_data: bytes, file_extension: str) -> bytes:
-        """创建包含文件的ZIP数据"""
-        zip_buffer = io.BytesIO()
-        
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            filename = f"output.{file_extension}"
-            zip_file.writestr(filename, file_data)
-        
-        return zip_buffer.getvalue()
-    
+
     def _calculate_required_image_size(self, data: bytes) -> int:
         """计算存储数据所需的图片尺寸（优化存储效率）"""
         # 每个像素3个通道，每个通道1位
@@ -254,42 +241,7 @@ class TTImgEncNode:
         
         return image
     
-    def _embed_data_in_image(self, image: np.ndarray, data: str) -> np.ndarray:
-        """将数据嵌入到图片中（使用LSB隐写术）"""
-        # 将数据转换为二进制
-        data_binary = ''.join(format(ord(char), '08b') for char in data)
-        
-        # 添加结束标记
-        data_binary += '00000000'  # 8个0作为结束标记
-        
-        # 确保图片有足够的像素来存储数据
-        required_pixels = len(data_binary)
-        if required_pixels > image.shape[0] * image.shape[1] * 3:
-            raise ValueError("图片太小，无法存储数据")
-        
-        # 复制图片
-        embedded_image = image.copy()
-        
-        # 嵌入数据到LSB
-        data_index = 0
-        for i in range(image.shape[0]):
-            for j in range(image.shape[1]):
-                for k in range(3):  # RGB通道
-                    if data_index < len(data_binary):
-                        # 修改最低位
-                        if data_binary[data_index] == '1':
-                            embedded_image[i, j, k] |= 1
-                        else:
-                            embedded_image[i, j, k] &= 0xFE
-                        data_index += 1
-                    else:
-                        break
-                if data_index >= len(data_binary):
-                    break
-            if data_index >= len(data_binary):
-                break
-        
-        return embedded_image
+
     
     def _create_error_image(self, size: int = 512) -> np.ndarray:
         """创建错误提示图片"""
