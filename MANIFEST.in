@@ -1,0 +1,9 @@
+include README.md
+include INSTALL.md
+include requirements.txt
+include LICENSE
+include *.py
+include *.json
+recursive-include web *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]

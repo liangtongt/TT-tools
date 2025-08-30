@@ -1,0 +1,154 @@
+{
+  "last_node_id": 8,
+  "last_link_id": 7,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [100, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"links": [1], "slot_index": 0},
+        "MASK": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": ["image1.png"]
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [100, 200],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"links": [2], "slot_index": 0},
+        "MASK": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": ["image2.png"]
+    },
+    {
+      "id": 3,
+      "type": "LoadImage",
+      "pos": [100, 300],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "outputs": {
+        "IMAGE": {"links": [3], "slot_index": 0},
+        "MASK": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": ["image3.png"]
+    },
+    {
+      "id": 4,
+      "type": "ImageBatch",
+      "pos": [400, 150],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 3,
+      "inputs": {
+        "image1": {"link": 1, "slot_index": 0},
+        "image2": {"link": 2, "slot_index": 0},
+        "image3": {"link": 3, "slot_index": 0}
+      },
+      "outputs": {
+        "images": {"links": [4], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": []
+    },
+    {
+      "id": 5,
+      "type": "ImageSequenceCompressor",
+      "pos": [700, 150],
+      "size": {"0": 210, "1": 200},
+      "flags": {},
+      "order": 4,
+      "inputs": {
+        "images": {"link": 4, "slot_index": 0},
+        "filename": {"link": 5, "slot_index": 0},
+        "compression_level": {"link": 6, "slot_index": 0},
+        "quality": {"link": 7, "slot_index": 0},
+        "format": {"link": [], "slot_index": 4},
+        "include_metadata": {"link": [], "slot_index": 5},
+        "output_directory": {"link": [], "slot_index": 6}
+      },
+      "outputs": {
+        "compressed_file_path": {"links": [], "slot_index": 0},
+        "extraction_script": {"links": [], "slot_index": 1}
+      },
+      "properties": {},
+      "widgets_values": [
+        "compressed_sequence.png",
+        6,
+        95,
+        "PNG",
+        true,
+        "output"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "PrimitiveNode",
+      "pos": [700, 50],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 5,
+      "inputs": {},
+      "outputs": {
+        "STRING": {"links": [5], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": ["compressed_sequence.png"]
+    },
+    {
+      "id": 7,
+      "type": "PrimitiveNode",
+      "pos": [700, 100],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 6,
+      "inputs": {},
+      "outputs": {
+        "INT": {"links": [6], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": [6]
+    },
+    {
+      "id": 8,
+      "type": "PrimitiveNode",
+      "pos": [700, 150],
+      "size": {"0": 210, "1": 46},
+      "flags": {},
+      "order": 7,
+      "inputs": {},
+      "outputs": {
+        "INT": {"links": [7], "slot_index": 0}
+      },
+      "properties": {},
+      "widgets_values": [95]
+    }
+  ],
+  "links": [
+    [1, 1, 0, 4, 0],
+    [2, 2, 0, 4, 1],
+    [3, 3, 0, 4, 2],
+    [4, 4, 0, 5, 0],
+    [5, 6, 0, 5, 1],
+    [6, 7, 0, 5, 2],
+    [7, 8, 0, 5, 3]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {},
+  "version": 0.4
+}
