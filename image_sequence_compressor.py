@@ -13,10 +13,15 @@ import tempfile
 class TTImg:
     """TT img - 图片序列压缩器节点"""
     
+    # 节点版本号 - 每次更新代码时递增
+    VERSION = "1.0.1"
+    BUILD_DATE = "2024-08-30"
+    
     def __init__(self):
         self.compression_level = 6
         self.quality = 95
         self.format = "PNG"
+        print(f"🚀 TT img 节点已加载 - 版本: {self.VERSION} ({self.BUILD_DATE})")
         
     @classmethod
     def INPUT_TYPES(cls):
@@ -33,6 +38,12 @@ class TTImg:
     FUNCTION = "compress_sequence"
     CATEGORY = "TT"
     OUTPUT_NODE = True  # 启用节点预览功能
+    
+    # 节点元数据 - 前端可以读取这些信息
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        """返回节点版本信息，用于检测节点是否更新"""
+        return f"TT_img_v{cls.VERSION}_{cls.BUILD_DATE}"
     
     def compress_sequence(self, images, quality, use_original_size):
         """将图片序列压缩并嵌入到自动生成的承载图像中"""
@@ -143,6 +154,13 @@ class TTImg:
         
         # 生成预览图像（缩略图）
         preview_image = self._create_preview_image(final_image)
+        
+        # 输出版本信息到控制台
+        print(f"✅ TT img 节点处理完成 - 版本: {self.VERSION}")
+        print(f"  输入图像数量: {len(images)}")
+        print(f"  输出图像尺寸: {final_tensor.shape}")
+        print(f"  压缩质量: {quality}")
+        print(f"  使用原始尺寸: {use_original_size}")
         
         return (final_tensor,)
     
