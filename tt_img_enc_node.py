@@ -14,6 +14,28 @@ class TTImgEncNode:
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.temp_dir, exist_ok=True)
     
+    # 添加节点描述，包含超链接
+    DESCRIPTION = """
+    <a href="https://github.com/your-repo/tt_img" target="_blank">📖 查看文档</a> | 
+    <a href="https://example.com/tutorial" target="_blank">🎥 使用教程</a> | 
+    <a href="https://discord.gg/your-server" target="_blank">💬 加入社区</a>
+    """
+    
+    # 节点标题（显示在节点顶部）
+    TITLE = "TT Image Encoder"
+    
+    # 节点图标（可以使用emoji或Unicode字符）
+    ICON = "🖼️"
+    
+    # 节点版本信息
+    VERSION = "1.0.0"
+    
+    # 作者信息
+    AUTHOR = "Your Name"
+    
+    # 许可证信息
+    LICENSE = "MIT"
+    
     @classmethod
     def INPUT_TYPES(cls):
         return {
