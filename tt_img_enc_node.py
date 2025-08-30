@@ -25,8 +25,6 @@ class TTImgEncNode:
                 "images": ("IMAGE",),
                 "fps": ("INT", {"default": 30, "min": 1, "max": 60}),
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
-                "noise_density": ("FLOAT", {"default": 0.1, "min": 0.01, "max": 0.5}),
-                "noise_size": ("INT", {"default": 2, "min": 1, "max": 5}),
             }
         }
     
@@ -35,7 +33,7 @@ class TTImgEncNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, fps=30, quality=95, noise_density=0.1, noise_size=2):
+    def process_images(self, images, fps=30, quality=95):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片
         """
@@ -72,8 +70,8 @@ class TTImgEncNode:
                 temp_file = self._image_to_jpg(numpy_images[0], quality)
                 file_extension = "jpg"
             
-            # 创建造点图片并嵌入文件
-            output_image = self._create_noise_image_with_file(temp_file, file_extension, noise_density, noise_size)
+            # 创建存储图片并嵌入文件
+            output_image = self._create_storage_image_with_file(temp_file, file_extension)
             
             # 清理临时文件
             if temp_file and os.path.exists(temp_file):
@@ -141,8 +139,8 @@ class TTImgEncNode:
         
         return temp_path
     
-    def _create_noise_image_with_file(self, file_path: str, file_extension: str, noise_density: float, noise_size: int) -> np.ndarray:
-        """创建造点图片并嵌入文件"""
+    def _create_storage_image_with_file(self, file_path: str, file_extension: str) -> np.ndarray:
+        """创建存储图片并嵌入文件"""
         # 读取文件内容
         with open(file_path, 'rb') as f:
             file_data = f.read()
@@ -154,11 +152,11 @@ class TTImgEncNode:
         required_size = self._calculate_required_image_size(file_header)
         print(f"文件大小: {len(file_header)} 字节，需要图片尺寸: {required_size}x{required_size}")
         
-        # 创建造点图片（动态尺寸）
-        noise_image = self._create_noise_image(required_size, noise_density, noise_size)
+        # 创建纯色存储图片（最小尺寸，最大存储效率）
+        storage_image = self._create_storage_image(required_size)
         
-        # 将文件数据直接嵌入到图片中（不使用ZIP压缩）
-        embedded_image = self._embed_file_data_in_image(noise_image, file_header)
+        # 将文件数据直接嵌入到图片中
+        embedded_image = self._embed_file_data_in_image(storage_image, file_header)
         
         return embedded_image
     
@@ -173,7 +171,7 @@ class TTImgEncNode:
         return zip_buffer.getvalue()
     
     def _calculate_required_image_size(self, data: bytes) -> int:
-        """计算存储数据所需的图片尺寸"""
+        """计算存储数据所需的图片尺寸（优化存储效率）"""
         # 每个像素3个通道，每个通道1位
         bits_needed = len(data) * 8
         pixels_needed = bits_needed // 3
@@ -181,11 +179,11 @@ class TTImgEncNode:
         # 计算正方形图片的边长
         side_length = int(np.ceil(np.sqrt(pixels_needed)))
         
-        # 确保最小尺寸为512，无上限限制
-        side_length = max(512, side_length)
+        # 确保最小尺寸为64（进一步减小最小尺寸）
+        side_length = max(64, side_length)
         
-        # 向上取整到最近的8的倍数（优化性能）
-        side_length = ((side_length + 7) // 8) * 8
+        # 向上取整到最近的4的倍数（更小的对齐，提高效率）
+        side_length = ((side_length + 3) // 4) * 4
         
         return side_length
     
@@ -249,23 +247,10 @@ class TTImgEncNode:
         
         return embedded_image
     
-    def _create_noise_image(self, size: int, density: float, noise_size: int) -> np.ndarray:
-        """创建造点图片"""
-        # 创建白色背景
-        image = np.ones((size, size, 3), dtype=np.uint8) * 255
-        
-        # 添加随机噪点
-        num_noise = int(size * size * density)
-        
-        for _ in range(num_noise):
-            x = np.random.randint(0, size)
-            y = np.random.randint(0, size)
-            
-            # 随机颜色
-            color = np.random.randint(0, 256, 3)
-            
-            # 绘制噪点
-            cv2.circle(image, (x, y), noise_size, color.tolist(), -1)
+    def _create_storage_image(self, size: int) -> np.ndarray:
+        """创建存储图片（纯色背景，最大存储效率）"""
+        # 创建纯色背景（灰色，便于LSB隐写）
+        image = np.ones((size, size, 3), dtype=np.uint8) * 128
         
         return image
     
