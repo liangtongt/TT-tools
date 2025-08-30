@@ -1,6 +1,6 @@
 {
-  "last_node_id": 8,
-  "last_link_id": 7,
+  "last_node_id": 6,
+  "last_link_id": 6,
   "nodes": [
     {
       "id": 1,
@@ -69,73 +69,36 @@
       "id": 5,
       "type": "ImageSequenceCompressor",
       "pos": [700, 150],
-      "size": {"0": 210, "1": 200},
+      "size": {"0": 210, "1": 150},
       "flags": {},
       "order": 4,
       "inputs": {
         "images": {"link": 4, "slot_index": 0},
-        "filename": {"link": 5, "slot_index": 0},
-        "compression_level": {"link": 6, "slot_index": 0},
-        "quality": {"link": 7, "slot_index": 0},
-        "format": {"link": [], "slot_index": 4},
-        "include_metadata": {"link": [], "slot_index": 5},
-        "output_directory": {"link": [], "slot_index": 6}
+        "quality": {"link": 7, "slot_index": 0}
       },
       "outputs": {
-        "compressed_file_path": {"links": [], "slot_index": 0},
-        "extraction_script": {"links": [], "slot_index": 1}
+        "image": {"links": [5], "slot_index": 0}
       },
       "properties": {},
       "widgets_values": [
-        "compressed_sequence.png",
-        6,
-        95,
-        "PNG",
-        true,
-        "output"
+        85,
+        512
       ]
     },
+
     {
       "id": 6,
       "type": "PrimitiveNode",
-      "pos": [700, 50],
+      "pos": [700, 100],
       "size": {"0": 210, "1": 46},
       "flags": {},
       "order": 5,
       "inputs": {},
       "outputs": {
-        "STRING": {"links": [5], "slot_index": 0}
-      },
-      "properties": {},
-      "widgets_values": ["compressed_sequence.png"]
-    },
-    {
-      "id": 7,
-      "type": "PrimitiveNode",
-      "pos": [700, 100],
-      "size": {"0": 210, "1": 46},
-      "flags": {},
-      "order": 6,
-      "inputs": {},
-      "outputs": {
         "INT": {"links": [6], "slot_index": 0}
       },
       "properties": {},
-      "widgets_values": [6]
-    },
-    {
-      "id": 8,
-      "type": "PrimitiveNode",
-      "pos": [700, 150],
-      "size": {"0": 210, "1": 46},
-      "flags": {},
-      "order": 7,
-      "inputs": {},
-      "outputs": {
-        "INT": {"links": [7], "slot_index": 0}
-      },
-      "properties": {},
-      "widgets_values": [95]
+      "widgets_values": [85]
     }
   ],
   "links": [
@@ -143,9 +106,8 @@
     [2, 2, 0, 4, 1],
     [3, 3, 0, 4, 2],
     [4, 4, 0, 5, 0],
-    [5, 6, 0, 5, 1],
-    [6, 7, 0, 5, 2],
-    [7, 8, 0, 5, 3]
+    [5, 5, 0, 0, 0],
+    [6, 6, 0, 5, 1]
   ],
   "groups": [],
   "config": {},

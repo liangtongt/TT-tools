@@ -23,11 +23,8 @@ class ImageSequenceCompressor:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "image": ("IMAGE",),
-                "compression_level": ("INT", {"default": 6, "min": 1, "max": 9}),
-                "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
-                "format": (["PNG", "JPEG", "WEBP"], {"default": "PNG"}),
-                "include_metadata": ("BOOLEAN", {"default": True})
+                "quality": ("INT", {"default": 85, "min": 1, "max": 100}),
+                "container_size": ("INT", {"default": 512, "min": 256, "max": 2048})
             }
         }
     
@@ -36,16 +33,13 @@ class ImageSequenceCompressor:
     FUNCTION = "compress_sequence"
     CATEGORY = "image/compression"
     
-    def compress_sequence(self, images, image, compression_level, quality, format, include_metadata):
-        """将图片序列压缩并嵌入到指定的图像中"""
+    def compress_sequence(self, images, quality, container_size):
+        """将图片序列压缩并嵌入到自动生成的承载图像中"""
         
-        # 准备图片数据
-        image_data_list = []
+        # 准备元数据
         metadata = {
             "image_count": len(images),
-            "compression_level": compression_level,
             "quality": quality,
-            "format": format,
             "timestamp": str(np.datetime64('now')),
             "type": "single" if len(images) == 1 else "sequence"
         }
@@ -74,60 +68,16 @@ class ImageSequenceCompressor:
         # 将数据编码为JSON字符串
         json_data = json.dumps(combined_data, indent=2)
         
-        # 使用输入的image作为基础图像
-        # 处理Tensor对象，转换为numpy数组
-        if torch.is_tensor(image):
-            base_img_array = image.cpu().numpy()
-            # 处理批次维度
-            if len(base_img_array.shape) == 4:
-                # 如果是批次格式 (B, C, H, W)，取第一张图片
-                base_img_array = base_img_array[0]
-            # Tensor通常是CHW格式，需要转换为HWC格式
-            if len(base_img_array.shape) == 3 and base_img_array.shape[0] == 3:
-                base_img_array = np.transpose(base_img_array, (1, 2, 0))
-        else:
-            base_img_array = image
-            # 处理numpy数组的批次维度
-            if len(base_img_array.shape) == 4:
-                # 如果是批次格式 (B, H, W, C)，取第一张图片
-                base_img_array = base_img_array[0]
+
         
-        if base_img_array.dtype != np.uint8:
-            base_img_array = (base_img_array * 255).astype(np.uint8)
-        else:
-            base_img_array = base_img_array
-        
-        # 确保图像是3通道RGB
-        if len(base_img_array.shape) == 3 and base_img_array.shape[2] == 3:
-            base_img = Image.fromarray(base_img_array, 'RGB')
-        elif len(base_img_array.shape) == 3 and base_img_array.shape[2] == 4:
-            base_img = Image.fromarray(base_img_array, 'RGBA')
-            base_img = base_img.convert('RGB')
-        else:
-            base_img = Image.fromarray(base_img_array, 'RGB')
+        # 创建承载图像
+        container_image = self._create_container_image(container_size, container_size)
         
         # 将JSON数据嵌入到图像中
-        final_image = self._embed_data_in_image(base_img, json_data)
-        
-        # 转换回numpy数组格式，保持与输入相同的数值范围
-        if torch.is_tensor(image):
-            # 如果输入是Tensor，检查数值范围
-            if image.max() <= 1.0:
-                # 如果输入是0-1范围，输出也保持0-1范围
-                final_array = np.array(final_image).astype(np.float32) / 255.0
-            else:
-                # 如果输入是0-255范围，输出也保持0-255范围
-                final_array = np.array(final_image).astype(np.uint8)
-        else:
-            # 如果输入是numpy数组
-            if image.dtype != np.uint8:
-                # 如果输入是0-1范围，输出也保持0-1范围
-                final_array = np.array(final_image).astype(np.float32) / 255.0
-            else:
-                # 如果输入是0-255范围，输出也保持0-255范围
-                final_array = np.array(final_image).astype(np.uint8)
+        final_image = self._embed_data_in_image(container_image, json_data)
         
         # 转换为Tensor格式返回，确保是CHW格式
+        final_array = np.array(final_image).astype(np.float32) / 255.0
         if len(final_array.shape) == 3 and final_array.shape[2] == 3:
             # 如果是HWC格式，转换为CHW格式
             final_array = np.transpose(final_array, (2, 0, 1))
@@ -268,5 +218,27 @@ class ImageSequenceCompressor:
             img_array = (img_array * 255).astype(np.uint8)
         
         return img_array
+    
+    def _create_container_image(self, width, height):
+        """创建承载数据的图像"""
+        # 创建一个渐变背景的图像
+        img = Image.new('RGB', (width, height), (240, 240, 240))
+        
+        # 添加一些简单的图案，让图像看起来更自然
+        from PIL import ImageDraw
+        
+        draw = ImageDraw.Draw(img)
+        
+        # 添加一些随机的小点
+        import random
+        random.seed(42)  # 固定种子，确保每次生成相同的图像
+        
+        for _ in range(50):
+            x = random.randint(0, width-1)
+            y = random.randint(0, height-1)
+            color = (random.randint(200, 255), random.randint(200, 255), random.randint(200, 255))
+            draw.point((x, y), fill=color)
+        
+        return img
 
 # 节点注册已移至 __init__.py
