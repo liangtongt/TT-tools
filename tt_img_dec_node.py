@@ -7,10 +7,43 @@ from typing import List
 class TTImgDecNode:
     def __init__(self):
         # 使用ComfyUI的output目录
-        self.output_dir = "output"
+        # 尝试多种可能的输出目录路径
+        possible_output_dirs = [
+            "output",  # 当前目录下的output
+            "ComfyUI/output",  # ComfyUI主目录下的output
+            "../output",  # 上级目录的output
+            "./output",  # 当前目录的output
+            os.path.join(os.getcwd(), "output"),  # 当前工作目录下的output
+        ]
         
-        # 创建必要的目录
-        os.makedirs(self.output_dir, exist_ok=True)
+        self.output_dir = None
+        for output_dir in possible_output_dirs:
+            try:
+                # 检查目录是否存在或可以创建
+                if os.path.exists(output_dir):
+                    if os.access(output_dir, os.W_OK):
+                        self.output_dir = output_dir
+                        break
+                else:
+                    # 尝试创建目录
+                    os.makedirs(output_dir, exist_ok=True)
+                    if os.access(output_dir, os.W_OK):
+                        self.output_dir = output_dir
+                        break
+            except Exception as e:
+                print(f"尝试目录 {output_dir} 失败: {e}")
+                continue
+        
+        # 如果都找不到，使用当前目录下的output
+        if self.output_dir is None:
+            self.output_dir = "output"
+            try:
+                os.makedirs(self.output_dir, exist_ok=True)
+            except Exception as e:
+                print(f"创建默认输出目录失败: {e}")
+        
+        print(f"使用输出目录: {os.path.abspath(self.output_dir)}")
+        print(f"当前工作目录: {os.getcwd()}")
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -20,11 +53,11 @@ class TTImgDecNode:
                 "output_filename": ("STRING", {"default": "extracted_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n自动避开水印区域：从第51行开始读取数据，跳过左上角50像素水印区域\n确保即使图片被添加水印也能正确提取数据\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n兼容被打水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
-    RETURN_TYPES = ("STRING", "STRING")  # 返回提取状态和文件路径
+    RETURN_TYPES = ("STRING", "STRING", "STRING")  # 返回提取状态、文件路径和输出目录
     FUNCTION = "extract_file_from_image"
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
@@ -63,7 +96,7 @@ class TTImgDecNode:
                 if usage_notes:
                     print(f"=== 提取失败，请参考使用说明 ===")
                     print(usage_notes)
-                return (error_msg, "")
+                return (error_msg, "", "")
             
             print(f"✓ 成功提取文件数据: {len(file_data)} 字节")
             print(f"文件扩展名: {file_extension}")
@@ -79,10 +112,20 @@ class TTImgDecNode:
             output_path = os.path.join(self.output_dir, output_filename)
             
             # 保存文件
+            print(f"正在保存文件到: {output_path}")
+            print(f"文件大小: {len(file_data)} 字节")
+            
             with open(output_path, 'wb') as f:
                 f.write(file_data)
             
-            print(f"✓ 文件已保存到: {output_path}")
+            # 验证文件是否成功保存
+            if os.path.exists(output_path):
+                actual_size = os.path.getsize(output_path)
+                print(f"✓ 文件已成功保存到: {output_path}")
+                print(f"实际文件大小: {actual_size} 字节")
+            else:
+                print(f"❌ 文件保存失败，路径不存在: {output_path}")
+                return ("文件保存失败", "", "")
             
             # 如果有使用说明，在控制台输出
             if usage_notes:
@@ -93,15 +136,18 @@ class TTImgDecNode:
                 print(f"文件大小: {len(file_data)} 字节")
                 print(f"文件位置: ComfyUI output 目录")
             
-            return ("提取成功", output_path)
+            return ("提取成功", output_path, os.path.abspath(self.output_dir))
             
         except Exception as e:
             error_msg = f"提取失败: {str(e)}"
             print(f"❌ {error_msg}")
+            import traceback
+            print(f"详细错误信息:")
+            traceback.print_exc()
             if usage_notes:
                 print(f"=== 提取失败，但请参考使用说明 ===")
                 print(usage_notes)
-            return (error_msg, "")
+            return (error_msg, "", "")
     
     def _extract_file_data_from_image(self, image_array: np.ndarray) -> tuple:
         """
