@@ -27,6 +27,7 @@ MANIFEST
 
 extract_zip.py
 tt_img_dec_loc.py
+tt_img_dec_pw_loc.py
 
 # Installer logs
 pip-log.txt
@@ -129,3 +130,7 @@ temp/
 .Trashes
 ehthumbs.db
 Thumbs.db
+tt_img_dec_pw_loc.py
+tt_img_dec_pw_loc.py
+tt_img_dec_pw_loc.py
+TT_Img_Loc.py

@@ -45,7 +45,7 @@ class TTImgDecPwNode:
                 "output_filename": ("STRING", {"default": "tt_img_dec_pw_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "用于解码带密码保护的 tt img enc pw 加密的图片\n需要输入正确的密码才能提取文件\n自动保存到ComfyUI默认output目录\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "通用解码节点：支持带密码保护和无密码的图片\n自动检测图片类型，无需手动选择\n如果图片有密码保护，需要输入正确密码\n如果图片无密码保护，密码字段可留空\n自动保存到ComfyUI默认output目录\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
@@ -56,7 +56,8 @@ class TTImgDecPwNode:
     
     def extract_file_from_image(self, image, password="", output_filename="tt_img_dec_pw_file", usage_notes=None):
         """
-        从带密码保护的造点图片中提取隐藏文件
+        通用解码函数：支持带密码保护和无密码的造点图片
+        自动检测图片类型并选择相应的解码方式
         """
         try:
             # 将ComfyUI的torch张量转换为numpy数组
@@ -113,7 +114,8 @@ class TTImgDecPwNode:
     
     def _extract_file_data_from_image(self, image_array: np.ndarray, password: str = "") -> tuple:
         """
-        从图片数组中提取文件数据（支持密码保护）
+        从图片数组中提取文件数据（支持密码保护和无密码）
+        自动检测图片类型并选择相应的解码方式
         
         Args:
             image_array: 图片数组
@@ -160,8 +162,13 @@ class TTImgDecPwNode:
             file_header_binary = binary_data[32:32 + data_length * 8]
             file_header = self._binary_to_bytes(file_header_binary)
             
-            # 解析带密码保护的文件头
+            # 首先尝试解析为密码保护格式
             file_data, file_extension = self._parse_file_header_with_password(file_header, password)
+            
+            # 如果密码保护格式解析失败，尝试解析为普通格式
+            if file_data is None:
+                print("尝试解析为普通无密码格式...")
+                file_data, file_extension = self._parse_file_header_normal(file_header)
             
             return file_data, file_extension
             
@@ -238,6 +245,45 @@ class TTImgDecPwNode:
             
         except Exception as e:
             print(f"❌ 文件头解析失败: {e}")
+            return None, None
+    
+    def _parse_file_header_normal(self, file_header: bytes) -> tuple:
+        """
+        解析普通无密码保护的文件头
+        
+        Args:
+            file_header: 文件头数据
+        
+        Returns:
+            tuple: (file_data, file_extension) 或 (None, None)
+        """
+        try:
+            if len(file_header) < 5:  # 至少需要1字节扩展名长度 + 4字节数据长度
+                return None, None
+            
+            # 解析扩展名长度
+            extension_length = file_header[0]
+            
+            if len(file_header) < 1 + extension_length + 4:
+                return None, None
+            
+            # 解析扩展名
+            file_extension = file_header[1:1 + extension_length].decode('utf-8')
+            
+            # 解析数据长度
+            data_size = int.from_bytes(file_header[1 + extension_length:1 + extension_length + 4], 'big')
+            
+            # 提取文件数据
+            file_data = file_header[1 + extension_length + 4:]
+            
+            print(f"✓ 检测到普通无密码格式")
+            print(f"文件扩展名: {file_extension}")
+            print(f"文件数据大小: {len(file_data)} 字节")
+            
+            return file_data, file_extension
+            
+        except Exception as e:
+            print(f"❌ 普通格式文件头解析失败: {e}")
             return None, None
     
     def _verify_password(self, password: str, salt: bytes, stored_hash: bytes) -> bool:
