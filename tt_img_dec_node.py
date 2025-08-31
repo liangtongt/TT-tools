@@ -47,10 +47,10 @@ class TTImgDecNode:
             }
         }
     
-    RETURN_TYPES = ("STRING",)  # 只返回提取状态
+    RETURN_TYPES = ()  # 无输出
     FUNCTION = "extract_file_from_image"
     CATEGORY = "TT Tools"
-    OUTPUT_NODE = True
+    OUTPUT_NODE = False
     
     def extract_file_from_image(self, image, output_filename="tt_img_dec_file", usage_notes=None):
         """
@@ -78,7 +78,7 @@ class TTImgDecNode:
             file_data, file_extension = self._extract_file_data_from_image(img_np)
             
             if file_data is None:
-                return ("提取失败",)
+                return
             
             # 确定输出路径
             if not output_filename:
@@ -104,10 +104,10 @@ class TTImgDecNode:
             with open(output_path, 'wb') as f:
                 f.write(file_data)
             
-            return ("提取成功",)
+            return
             
         except Exception as e:
-            return ("提取失败",)
+            return
     
     def _extract_file_data_from_image(self, image_array: np.ndarray) -> tuple:
         """
