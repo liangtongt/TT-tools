@@ -36,7 +36,7 @@ TT img 是一个完整的图片视频隐藏comfyui插件，包含编码和解码
 ### 🎯 方法1：Git Clone（推荐）
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/tttools/tt-img-enc.git
+git clone https://github.com/liangtongt/TT-tools.git
 ```
 然后重启 ComfyUI，节点会自动加载。
 
