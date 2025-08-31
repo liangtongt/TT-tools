@@ -112,7 +112,7 @@ temp/
 *.mp4
 *.avi
 *.mov
-*.exe
+
 
 # IDE
 .vscode/
