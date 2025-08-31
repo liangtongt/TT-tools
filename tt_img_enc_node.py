@@ -180,12 +180,18 @@ class TTImgEncNode:
         bits_needed = len(data) * 8
         pixels_needed = bits_needed // 3
         
-        # 考虑水印区域（前50行不可用）
-        watermark_height = 50
+        # 考虑水印区域（使用5%的比例，与解码节点保持一致）
+        # 先估算一个合理的初始尺寸
+        estimated_size = int(np.ceil(np.sqrt(pixels_needed * 1.2)))  # 预留20%空间
+        estimated_size = max(64, estimated_size)
+        estimated_size = ((estimated_size + 3) // 4) * 4  # 4的倍数对齐
+        
+        # 使用估算尺寸计算水印区域
+        watermark_height = int(estimated_size * 0.05)
         
         # 计算需要的总像素数（包括水印区域）
         # 我们需要确保有足够的像素来存储数据，同时为水印区域预留空间
-        total_pixels_needed = pixels_needed + (watermark_height * int(np.ceil(np.sqrt(pixels_needed))))
+        total_pixels_needed = pixels_needed + (watermark_height * estimated_size)
         
         # 计算正方形图片的边长
         side_length = int(np.ceil(np.sqrt(total_pixels_needed)))
@@ -228,8 +234,8 @@ class TTImgEncNode:
     
     def _embed_file_data_in_image(self, image: np.ndarray, file_header: bytes) -> np.ndarray:
         """将文件数据直接嵌入到图片中（不使用ZIP压缩）"""
-        # 计算可用区域（排除左上角50像素高度的水印区域）
-        watermark_height = 50
+        # 计算可用区域（使用5%的比例，与解码节点保持一致）
+        watermark_height = int(image.shape[0] * 0.05)
         available_height = image.shape[0] - watermark_height
         
         # 检查数据大小是否超过可用图片容量
@@ -237,7 +243,7 @@ class TTImgEncNode:
         if len(file_header) > max_data_size:
             raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节（已排除水印区域）")
         
-        print(f"嵌入文件数据: {len(file_header)} 字节到 {image.shape[0]}x{image.shape[1]} 图片（从第{watermark_height+1}行开始）")
+        print(f"嵌入文件数据: {len(file_header)} 字节到 {image.shape[0]}x{image.shape[1]} 图片（从第{watermark_height+1}行开始，水印区域高度: {watermark_height}像素）")
         
         # 复制图片
         embedded_image = image.copy()
@@ -250,9 +256,9 @@ class TTImgEncNode:
         length_binary = format(data_length, '032b')
         full_binary = length_binary + data_binary
         
-        # 嵌入数据到图片的LSB（从第51行开始，避开水印区域）
+        # 嵌入数据到图片的LSB（从水印区域后开始，避开水印区域）
         data_index = 0
-        for i in range(watermark_height, image.shape[0]):  # 从第51行开始
+        for i in range(watermark_height, image.shape[0]):  # 从水印区域后开始
             for j in range(image.shape[1]):
                 for k in range(3):  # RGB通道
                     if data_index < len(full_binary):

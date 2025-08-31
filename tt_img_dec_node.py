@@ -183,7 +183,7 @@ class TTImgDecNode:
     
     def _extract_binary_from_lsb(self, image_array: np.ndarray) -> str:
         """
-        从图片的LSB中提取二进制数据（从第51行开始，避开水印区域）
+        从图片的LSB中提取二进制数据（从水印区域后开始，避开水印区域）
         
         Args:
             image_array: 图片数组
@@ -193,11 +193,11 @@ class TTImgDecNode:
         """
         try:
             height, width, channels = image_array.shape
-            watermark_height = 50  # 水印区域高度
+            watermark_height = int(height * 0.05)  # 水印区域高度为图片高度的5%
             binary_data = ""
             
-            # 从第51行开始，从每个像素的LSB中提取数据
-            for i in range(watermark_height, height):  # 从第51行开始
+            # 从水印区域后开始，从每个像素的LSB中提取数据
+            for i in range(watermark_height, height):  # 从水印区域后开始
                 for j in range(width):
                     for k in range(channels):
                         # 提取最低位
