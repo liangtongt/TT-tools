@@ -2,6 +2,7 @@
 """
 TT img enc 文件提取工具
 从造点图片中提取隐藏的文件（MP4/JPG等）
+支持水印区域兼容性：自动从第51行开始读取数据，跳过左上角50像素水印区域
 """
 
 import os
@@ -135,7 +136,7 @@ def extract_file_data_from_image(image_array: np.ndarray) -> tuple:
 
 def extract_binary_from_lsb(image_array: np.ndarray) -> str:
     """
-    从图片的LSB中提取二进制数据
+    从图片的LSB中提取二进制数据（从第51行开始，避开水印区域）
     
     Args:
         image_array: 图片数组
@@ -145,10 +146,11 @@ def extract_binary_from_lsb(image_array: np.ndarray) -> str:
     """
     try:
         height, width, channels = image_array.shape
+        watermark_height = 50  # 水印区域高度
         binary_data = ""
         
-        # 从每个像素的LSB中提取数据
-        for i in range(height):
+        # 从第51行开始，从每个像素的LSB中提取数据
+        for i in range(watermark_height, height):  # 从第51行开始
             for j in range(width):
                 for k in range(channels):
                     # 提取最低位
@@ -165,16 +167,19 @@ def extract_binary_from_lsb(image_array: np.ndarray) -> str:
                             
                             # 继续提取直到获得完整数据
                             while len(binary_data) < total_bits_needed:
-                                # 计算下一个像素位置
+                                # 计算下一个像素位置（考虑水印区域偏移）
                                 current_pos = len(binary_data)
                                 pixel_index = current_pos // 3
                                 channel_index = current_pos % 3
                                 
-                                if pixel_index >= height * width:
-                                    # 超出图片范围，停止提取
+                                # 计算在可用区域中的位置
+                                available_pixels = (height - watermark_height) * width
+                                if pixel_index >= available_pixels:
+                                    # 超出可用区域范围，停止提取
                                     break
                                 
-                                row = pixel_index // width
+                                # 计算实际的行列位置（加上水印区域偏移）
+                                row = watermark_height + (pixel_index // width)
                                 col = pixel_index % width
                                 
                                 if row < height and col < width:
@@ -231,6 +236,7 @@ def main():
         print("使用方法: python extract_zip.py <图片路径> [输出路径]")
         print("示例: python extract_zip.py output_image.png")
         print("示例: python extract_zip.py output_image.png extracted.mp4")
+        print("\n💡 支持水印兼容性：自动跳过左上角50像素水印区域")
         return
     
     image_path = sys.argv[1]
@@ -253,6 +259,7 @@ def main():
         print("1. 图片是否由TT img enc节点生成")
         print("2. 图片是否完整下载")
         print("3. 图片格式是否正确")
+        print("4. 如果图片有水印，工具会自动跳过水印区域")
 
 if __name__ == "__main__":
     main()

@@ -22,7 +22,7 @@ class TTImgEncNode:
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片，配合配套的本地解码软件，即可获取原文件\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片，配合配套的本地解码软件，即可获取原文件\n自动避开水印区域：图片左上角50像素高度区域保留给平台水印\n数据从第51行开始写入，确保水印不会影响数据完整性\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
         
@@ -175,19 +175,35 @@ class TTImgEncNode:
     
 
     def _calculate_required_image_size(self, data: bytes) -> int:
-        """计算存储数据所需的图片尺寸（优化存储效率）"""
+        """计算存储数据所需的图片尺寸（优化存储效率，考虑水印区域）"""
         # 每个像素3个通道，每个通道1位
         bits_needed = len(data) * 8
         pixels_needed = bits_needed // 3
         
-        # 计算正方形图片的边长
-        side_length = int(np.ceil(np.sqrt(pixels_needed)))
+        # 考虑水印区域（前50行不可用）
+        watermark_height = 50
         
-        # 确保最小尺寸为64（进一步减小最小尺寸）
+        # 计算需要的总像素数（包括水印区域）
+        # 我们需要确保有足够的像素来存储数据，同时为水印区域预留空间
+        total_pixels_needed = pixels_needed + (watermark_height * int(np.ceil(np.sqrt(pixels_needed))))
+        
+        # 计算正方形图片的边长
+        side_length = int(np.ceil(np.sqrt(total_pixels_needed)))
+        
+        # 确保最小尺寸为64
         side_length = max(64, side_length)
         
         # 向上取整到最近的4的倍数（更小的对齐，提高效率）
         side_length = ((side_length + 3) // 4) * 4
+        
+        # 验证计算是否正确
+        available_pixels = (side_length - watermark_height) * side_length
+        required_pixels = pixels_needed
+        
+        if available_pixels < required_pixels:
+            # 如果可用像素不够，增加图片尺寸
+            side_length = int(np.ceil(np.sqrt(required_pixels + watermark_height * side_length)))
+            side_length = ((side_length + 3) // 4) * 4
         
         return side_length
     
@@ -212,12 +228,16 @@ class TTImgEncNode:
     
     def _embed_file_data_in_image(self, image: np.ndarray, file_header: bytes) -> np.ndarray:
         """将文件数据直接嵌入到图片中（不使用ZIP压缩）"""
-        # 检查数据大小是否超过图片容量
-        max_data_size = image.shape[0] * image.shape[1] * 3 // 8  # 每个像素3通道，每8位1字节
-        if len(file_header) > max_data_size:
-            raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节")
+        # 计算可用区域（排除左上角50像素高度的水印区域）
+        watermark_height = 50
+        available_height = image.shape[0] - watermark_height
         
-        print(f"嵌入文件数据: {len(file_header)} 字节到 {image.shape[0]}x{image.shape[1]} 图片")
+        # 检查数据大小是否超过可用图片容量
+        max_data_size = available_height * image.shape[1] * 3 // 8  # 每个像素3通道，每8位1字节
+        if len(file_header) > max_data_size:
+            raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节（已排除水印区域）")
+        
+        print(f"嵌入文件数据: {len(file_header)} 字节到 {image.shape[0]}x{image.shape[1]} 图片（从第{watermark_height+1}行开始）")
         
         # 复制图片
         embedded_image = image.copy()
@@ -230,9 +250,9 @@ class TTImgEncNode:
         length_binary = format(data_length, '032b')
         full_binary = length_binary + data_binary
         
-        # 嵌入数据到图片的LSB
+        # 嵌入数据到图片的LSB（从第51行开始，避开水印区域）
         data_index = 0
-        for i in range(image.shape[0]):
+        for i in range(watermark_height, image.shape[0]):  # 从第51行开始
             for j in range(image.shape[1]):
                 for k in range(3):  # RGB通道
                     if data_index < len(full_binary):

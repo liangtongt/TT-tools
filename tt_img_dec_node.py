@@ -20,7 +20,7 @@ class TTImgDecNode:
                 "output_filename": ("STRING", {"default": "extracted_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n自动避开水印区域：从第51行开始读取数据，跳过左上角50像素水印区域\n确保即使图片被添加水印也能正确提取数据\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
@@ -183,7 +183,7 @@ class TTImgDecNode:
     
     def _extract_binary_from_lsb(self, image_array: np.ndarray) -> str:
         """
-        从图片的LSB中提取二进制数据
+        从图片的LSB中提取二进制数据（从第51行开始，避开水印区域）
         
         Args:
             image_array: 图片数组
@@ -193,10 +193,11 @@ class TTImgDecNode:
         """
         try:
             height, width, channels = image_array.shape
+            watermark_height = 50  # 水印区域高度
             binary_data = ""
             
-            # 从每个像素的LSB中提取数据
-            for i in range(height):
+            # 从第51行开始，从每个像素的LSB中提取数据
+            for i in range(watermark_height, height):  # 从第51行开始
                 for j in range(width):
                     for k in range(channels):
                         # 提取最低位
@@ -213,16 +214,19 @@ class TTImgDecNode:
                                 
                                 # 继续提取直到获得完整数据
                                 while len(binary_data) < total_bits_needed:
-                                    # 计算下一个像素位置
+                                    # 计算下一个像素位置（考虑水印区域偏移）
                                     current_pos = len(binary_data)
                                     pixel_index = current_pos // 3
                                     channel_index = current_pos % 3
                                     
-                                    if pixel_index >= height * width:
-                                        # 超出图片范围，停止提取
+                                    # 计算在可用区域中的位置
+                                    available_pixels = (height - watermark_height) * width
+                                    if pixel_index >= available_pixels:
+                                        # 超出可用区域范围，停止提取
                                         break
                                     
-                                    row = pixel_index // width
+                                    # 计算实际的行列位置（加上水印区域偏移）
+                                    row = watermark_height + (pixel_index // width)
                                     col = pixel_index % width
                                     
                                     if row < height and col < width:
