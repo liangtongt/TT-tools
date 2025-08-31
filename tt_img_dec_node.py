@@ -78,7 +78,7 @@ class TTImgDecNode:
             file_data, file_extension = self._extract_file_data_from_image(img_np)
             
             if file_data is None:
-                return
+                return ()
             
             # 确定输出路径
             if not output_filename:
@@ -104,10 +104,10 @@ class TTImgDecNode:
             with open(output_path, 'wb') as f:
                 f.write(file_data)
             
-            return
+            return ()
             
         except Exception as e:
-            return
+            return ()
     
     def _extract_file_data_from_image(self, image_array: np.ndarray) -> tuple:
         """
