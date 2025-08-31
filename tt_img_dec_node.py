@@ -50,7 +50,7 @@ class TTImgDecNode:
     RETURN_TYPES = ()  # 无输出
     FUNCTION = "extract_file_from_image"
     CATEGORY = "TT Tools"
-    OUTPUT_NODE = False
+    OUTPUT_NODE = True
     
     def extract_file_from_image(self, image, output_filename="tt_img_dec_file", usage_notes=None):
         """
