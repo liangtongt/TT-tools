@@ -67,12 +67,20 @@ def extract_file_data_from_image(image_array: np.ndarray) -> tuple:
         tuple: (file_data, file_extension) 或 (None, None)
     """
     try:
-        # 确保图片是3通道RGB
-        if len(image_array.shape) != 3 or image_array.shape[2] != 3:
-            print("❌ 图片必须是3通道RGB格式")
+        # 支持3通道RGB和4通道RGBA格式
+        if len(image_array.shape) != 3 or image_array.shape[2] not in [3, 4]:
+            print("❌ 图片必须是3通道RGB或4通道RGBA格式")
             return None, None
         
         height, width, channels = image_array.shape
+        
+        # 如果是RGBA格式，转换为RGB（丢弃透明度通道）
+        if channels == 4:
+            print("检测到RGBA格式，自动转换为RGB格式")
+            # 转换为RGB（丢弃透明度通道）
+            image_array = image_array[:, :, :3]
+            channels = 3
+            print(f"转换后图片尺寸: {image_array.shape}")
         
         # 从LSB中提取二进制数据
         binary_data = extract_binary_from_lsb(image_array)
