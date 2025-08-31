@@ -33,7 +33,7 @@ class TTImgDecNode:
             self.output_dir = "output"
             os.makedirs(self.output_dir, exist_ok=True)
         
-        print(f"使用ComfyUI output目录: {os.path.abspath(self.output_dir)}")
+
     
     @classmethod
     def INPUT_TYPES(cls):
@@ -74,22 +74,11 @@ class TTImgDecNode:
             if len(img_np.shape) == 4:
                 img_np = img_np[0]
             
-            print(f"正在从图片中提取隐藏文件...")
-            print(f"图片尺寸: {img_np.shape}")
-            
             # 从图片中提取文件数据
             file_data, file_extension = self._extract_file_data_from_image(img_np)
             
             if file_data is None:
-                error_msg = "无法从图片中提取文件数据"
-                print(f"❌ {error_msg}")
-                if usage_notes:
-                    print(f"=== 提取失败，请参考使用说明 ===")
-                    print(usage_notes)
-                return (error_msg,)
-            
-            print(f"✓ 成功提取文件数据: {len(file_data)} 字节")
-            print(f"文件扩展名: {file_extension}")
+                return ("提取失败",)
             
             # 确定输出路径
             if not output_filename:
@@ -99,53 +88,26 @@ class TTImgDecNode:
             if not output_filename.endswith(f".{file_extension}"):
                 output_filename = f"{output_filename}.{file_extension}"
             
-            output_path = os.path.join(self.output_dir, output_filename)
+            # 检查文件名冲突，自动重命名
+            base_name = os.path.splitext(output_filename)[0]
+            extension = os.path.splitext(output_filename)[1]
+            counter = 1
+            final_filename = output_filename
+            
+            while os.path.exists(os.path.join(self.output_dir, final_filename)):
+                final_filename = f"{base_name}_{counter}{extension}"
+                counter += 1
+            
+            output_path = os.path.join(self.output_dir, final_filename)
             
             # 保存文件
-            print(f"正在保存文件到: {output_path}")
-            print(f"文件大小: {len(file_data)} 字节")
-            
             with open(output_path, 'wb') as f:
                 f.write(file_data)
-            
-            # 验证文件是否成功保存
-            if os.path.exists(output_path):
-                actual_size = os.path.getsize(output_path)
-                print(f"✓ 文件已成功保存到: {output_path}")
-                print(f"实际文件大小: {actual_size} 字节")
-                
-                # 在命令行中输出文件路径，方便用户查找
-                print(f"\n🎉 文件提取完成！")
-                print(f"📁 文件路径: {os.path.abspath(output_path)}")
-                print(f"📄 文件名: {os.path.basename(output_path)}")
-                print(f"📊 文件大小: {actual_size} 字节")
-                print(f"📂 保存目录: {os.path.abspath(self.output_dir)}")
-                print(f"🔗 完整路径: {output_path}")
-            else:
-                print(f"❌ 文件保存失败，路径不存在: {output_path}")
-                return ("文件保存失败",)
-            
-            # 如果有使用说明，在控制台输出
-            if usage_notes:
-                print(f"=== TT img dec 使用说明 ===")
-                print(usage_notes)
-                print(f"=== 提取完成 ===")
-                print(f"输出文件: {output_path}")
-                print(f"文件大小: {len(file_data)} 字节")
-                print(f"文件位置: ComfyUI默认output目录")
             
             return ("提取成功",)
             
         except Exception as e:
-            error_msg = f"提取失败: {str(e)}"
-            print(f"❌ {error_msg}")
-            import traceback
-            print(f"详细错误信息:")
-            traceback.print_exc()
-            if usage_notes:
-                print(f"=== 提取失败，但请参考使用说明 ===")
-                print(usage_notes)
-            return (error_msg,)
+            return ("提取失败",)
     
     def _extract_file_data_from_image(self, image_array: np.ndarray) -> tuple:
         """
@@ -160,21 +122,15 @@ class TTImgDecNode:
         try:
             # 支持3通道RGB和4通道RGBA格式
             if len(image_array.shape) != 3 or image_array.shape[2] not in [3, 4]:
-                print("❌ 图片必须是3通道RGB或4通道RGBA格式")
                 return None, None
             
             height, width, channels = image_array.shape
             
             # 如果是RGBA格式，转换为RGB（丢弃透明度通道）
             if channels == 4:
-                print("检测到RGBA格式，自动转换为RGB格式")
-                # 使用alpha通道作为权重来混合RGB通道
-                alpha = image_array[:, :, 3:4] / 255.0
-                rgb = image_array[:, :, :3]
-                # 将RGBA转换为RGB，考虑透明度
-                image_array = (rgb * alpha + (1 - alpha) * 255).astype(np.uint8)
+                # 转换为RGB（丢弃透明度通道）
+                image_array = image_array[:, :, :3]
                 channels = 3
-                print(f"转换后图片尺寸: {image_array.shape}")
             
             # 从LSB中提取二进制数据
             binary_data = self._extract_binary_from_lsb(image_array)
@@ -184,22 +140,17 @@ class TTImgDecNode:
             
             # 解析数据长度（前32位）
             if len(binary_data) < 32:
-                print("❌ 数据长度不足")
                 return None, None
             
             length_binary = binary_data[:32]
             try:
                 data_length = int(length_binary, 2)
             except ValueError:
-                print("❌ 无法解析数据长度")
                 return None, None
-            
-            print(f"数据长度标记: {data_length} 字节")
             
             # 检查数据完整性
             expected_bits = 32 + data_length * 8
             if len(binary_data) < expected_bits:
-                print(f"❌ 数据不完整，期望 {expected_bits} 位，实际 {len(binary_data)} 位")
                 return None, None
             
             # 提取文件头数据
@@ -208,14 +159,12 @@ class TTImgDecNode:
             
             # 解析文件头
             if len(file_header) < 5:  # 至少需要1字节扩展名长度 + 4字节数据长度
-                print("❌ 文件头数据不完整")
                 return None, None
             
             # 解析扩展名长度
             extension_length = file_header[0]
             
             if len(file_header) < 1 + extension_length + 4:
-                print("❌ 文件头数据不完整")
                 return None, None
             
             # 解析扩展名
@@ -227,13 +176,9 @@ class TTImgDecNode:
             # 提取文件数据
             file_data = file_header[1 + extension_length + 4:]
             
-            print(f"文件扩展名: {file_extension}")
-            print(f"文件数据大小: {len(file_data)} 字节")
-            
             return file_data, file_extension
             
         except Exception as e:
-            print(f"❌ 数据提取失败: {e}")
             return None, None
     
     def _extract_binary_from_lsb(self, image_array: np.ndarray) -> str:
@@ -265,7 +210,6 @@ class TTImgDecNode:
                             length_binary = binary_data[:32]
                             try:
                                 data_length = int(length_binary, 2)
-                                print(f"检测到数据长度标记: {data_length} 字节")
                                 
                                 # 计算总需要的位数：32位长度 + 数据长度*8位
                                 total_bits_needed = 32 + data_length * 8
@@ -295,9 +239,8 @@ class TTImgDecNode:
                                 
                                 # 如果获得了足够的数据，返回
                                 if len(binary_data) >= total_bits_needed:
-                                    print(f"成功提取完整数据: {len(binary_data)} 位")
                                     return binary_data[:total_bits_needed]
-                                
+                                    
                             except ValueError:
                                 # 长度解析失败，继续提取
                                 pass
@@ -305,7 +248,6 @@ class TTImgDecNode:
             return binary_data
             
         except Exception as e:
-            print(f"❌ LSB提取失败: {e}")
             return None
     
     def _binary_to_bytes(self, binary_string: str) -> bytes:
@@ -333,7 +275,6 @@ class TTImgDecNode:
             return bytes(byte_data)
             
         except Exception as e:
-            print(f"❌ 二进制转换失败: {e}")
             return b''
 
 # 节点类定义完成
