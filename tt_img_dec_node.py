@@ -158,12 +158,23 @@ class TTImgDecNode:
             tuple: (file_data, file_extension) 或 (None, None)
         """
         try:
-            # 确保图片是3通道RGB
-            if len(image_array.shape) != 3 or image_array.shape[2] != 3:
-                print("❌ 图片必须是3通道RGB格式")
+            # 支持3通道RGB和4通道RGBA格式
+            if len(image_array.shape) != 3 or image_array.shape[2] not in [3, 4]:
+                print("❌ 图片必须是3通道RGB或4通道RGBA格式")
                 return None, None
             
             height, width, channels = image_array.shape
+            
+            # 如果是RGBA格式，转换为RGB（丢弃透明度通道）
+            if channels == 4:
+                print("检测到RGBA格式，自动转换为RGB格式")
+                # 使用alpha通道作为权重来混合RGB通道
+                alpha = image_array[:, :, 3:4] / 255.0
+                rgb = image_array[:, :, :3]
+                # 将RGBA转换为RGB，考虑透明度
+                image_array = (rgb * alpha + (1 - alpha) * 255).astype(np.uint8)
+                channels = 3
+                print(f"转换后图片尺寸: {image_array.shape}")
             
             # 从LSB中提取二进制数据
             binary_data = self._extract_binary_from_lsb(image_array)
@@ -254,11 +265,14 @@ class TTImgDecNode:
                             length_binary = binary_data[:32]
                             try:
                                 data_length = int(length_binary, 2)
+                                print(f"检测到数据长度标记: {data_length} 字节")
+                                
+                                # 计算总需要的位数：32位长度 + 数据长度*8位
                                 total_bits_needed = 32 + data_length * 8
                                 
                                 # 继续提取直到获得完整数据
                                 while len(binary_data) < total_bits_needed:
-                                    # 计算下一个像素位置（考虑水印区域偏移）
+                                    # 计算下一个像素位置
                                     current_pos = len(binary_data)
                                     pixel_index = current_pos // 3
                                     channel_index = current_pos % 3
@@ -281,6 +295,7 @@ class TTImgDecNode:
                                 
                                 # 如果获得了足够的数据，返回
                                 if len(binary_data) >= total_bits_needed:
+                                    print(f"成功提取完整数据: {len(binary_data)} 位")
                                     return binary_data[:total_bits_needed]
                                 
                             except ValueError:
