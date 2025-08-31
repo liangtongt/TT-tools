@@ -97,11 +97,19 @@ python extract_zip.py <图片路径>
 ```
 Load Image → TT img enc → Save Image
 ```
+图片编码
+![图片编码](imgs/img_encode_flow.png)
+
+视频编码
+![视频编码](imgs/video_encode_flow.png)
+
 
 **解码工作流**：
 ```
 Load Image → TT img dec → Preview Text
 ```
+解码
+![视频编码](imgs/decode_flow.png)
 
 **完整循环**：
 ```
@@ -179,6 +187,7 @@ python tt_img_dec_loc.py output_image.png my_image.jpg
 ```
 Load Image → TT img enc → Save Image
 ```
+
 
 ### 🔓 解码工作流
 ```
