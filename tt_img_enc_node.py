@@ -22,7 +22,7 @@ class TTImgEncNode:
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片，配合配套的本地解码软件，即可获取原文件\n自动避开水印区域：图片左上角50像素高度区域保留给平台水印\n数据从第51行开始写入，确保水印不会影响数据完整性\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片，配合配套的本地解码软件，即可获取原文件\n即使被RH加了水印也能正常解码\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
         

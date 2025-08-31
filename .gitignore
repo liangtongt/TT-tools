@@ -26,6 +26,7 @@ MANIFEST
 *.spec
 
 extract_zip.py
+tt_img_dec_loc.py
 
 # Installer logs
 pip-log.txt

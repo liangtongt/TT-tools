@@ -40,10 +40,10 @@ class TTImgDecNode:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "output_filename": ("STRING", {"default": "extracted_file", "multiline": False}),
+                "output_filename": ("STRING", {"default": "tt_img_dec_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n自动保存到ComfyUI默认output目录\n运行完成后在命令行显示文件路径\n兼容被打水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n自动保存到ComfyUI默认output目录\n运行完成后在命令行显示文件路径\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
@@ -52,7 +52,7 @@ class TTImgDecNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def extract_file_from_image(self, image, output_filename="extracted_file", usage_notes=None):
+    def extract_file_from_image(self, image, output_filename="tt_img_dec_file", usage_notes=None):
         """
         从造点图片中提取隐藏文件
         """
@@ -82,7 +82,7 @@ class TTImgDecNode:
             
             # 确定输出路径
             if not output_filename:
-                output_filename = "extracted_file"
+                output_filename = "tt_img_dec_file"
             
             # 添加扩展名
             if not output_filename.endswith(f".{file_extension}"):
