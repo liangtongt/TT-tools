@@ -4,7 +4,10 @@ import torch
 import hashlib
 import secrets
 from typing import List
-from tt_img_utils import TTImgUtils
+try:
+    from .tt_img_utils import TTImgUtils
+except ImportError:
+    from tt_img_utils import TTImgUtils
 
 class TTImgEncPwNode:
     def __init__(self):

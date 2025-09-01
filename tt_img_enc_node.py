@@ -2,7 +2,10 @@ import os
 import numpy as np
 import torch
 from typing import List
-from tt_img_utils import TTImgUtils
+try:
+    from .tt_img_utils import TTImgUtils
+except ImportError:
+    from tt_img_utils import TTImgUtils
 
 class TTImgEncNode:
     def __init__(self):
