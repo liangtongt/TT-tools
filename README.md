@@ -94,14 +94,6 @@ TT Tools 是一个功能丰富的 ComfyUI 节点套件，提供专业的图像�
 ![图像翻转示例](imgs/reverse.png)
 
 
-**功能特点**：
-- 自动文件类型识别
-- 支持密码保护的文件
-- 自动保存到ComfyUI output目录
-- 智能重命名避免文件覆盖
-
-![文件解码流程](imgs/decode_flow.png)
-
 ## 🚀 安装方法
 
 ### 🎯 方法1：Git Clone（推荐）
