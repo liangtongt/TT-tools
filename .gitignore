@@ -20,6 +20,9 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+TT_Img_Loc.build/
+TT_Img_Loc.dist/
+TT_Img_Loc.onefile-build/
 
 # PyInstaller
 *.manifest
