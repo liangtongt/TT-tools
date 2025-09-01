@@ -9,6 +9,7 @@ from .tt_img_dec_node import TTImgDecNode
 from .tt_img_enc_pw_node import TTImgEncPwNode
 from .tt_img_dec_pw_node import TTImgDecPwNode
 from .tt_img_reverse_node import TTImgReverseNode
+from .tt_img_color_reverse_node import TTImgColorReverseNode
 
 # 注册节点类
 NODE_CLASS_MAPPINGS = {
@@ -16,7 +17,8 @@ NODE_CLASS_MAPPINGS = {
     "TT_img_dec": TTImgDecNode,
     "TT_img_enc_pw": TTImgEncPwNode,
     "TT_img_dec_pw": TTImgDecPwNode,
-    "TT_img_reverse": TTImgReverseNode
+    "TT_img_reverse": TTImgReverseNode,
+    "TT_img_color_reverse": TTImgColorReverseNode
 }
 
 # 注册节点显示名称
@@ -25,7 +27,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_img_dec": "TT img dec",
     "TT_img_enc_pw": "TT img enc pw",
     "TT_img_dec_pw": "TT img dec pw",
-    "TT_img_reverse": "TT img reverse"
+    "TT_img_reverse": "TT img reverse",
+    "TT_img_color_reverse": "TT img color reverse"
 }
 
 # 节点分类
@@ -37,5 +40,6 @@ NODE_DESCRIPTIONS = {
     "TT_img_dec": "从造点图片中提取隐藏的文件",
     "TT_img_enc_pw": "将图片/视频转换为带密码保护的造点图片",
     "TT_img_dec_pw": "通用解码节点：支持带密码保护和无密码的图片，自动检测类型",
-    "TT_img_reverse": "图像反向节点：支持水平翻转、垂直翻转和同时翻转"
+    "TT_img_reverse": "图像反向节点：支持水平翻转、垂直翻转和同时翻转",
+    "TT_img_color_reverse": "图像颜色反向节点：支持完全反转、仅RGB反转、保留透明度反转"
 }
