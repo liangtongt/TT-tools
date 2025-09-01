@@ -9,15 +9,69 @@ class TTImgLUTNode:
         pass
     
     @classmethod
+    def _get_default_lut(cls):
+        """
+        生成默认的复古暖色调LUT内容
+        
+        Returns:
+            str: .cube格式的LUT内容
+        """
+        # 创建一个32x32x32的复古暖色调LUT
+        lut_size = 32
+        lut_data = []
+        
+        # 生成复古暖色调LUT数据
+        for b in range(lut_size):
+            for g in range(lut_size):
+                for r in range(lut_size):
+                    # 将索引转换为0-1范围
+                    r_val = r / (lut_size - 1)
+                    g_val = g / (lut_size - 1)
+                    b_val = b / (lut_size - 1)
+                    
+                    # 应用复古暖色调效果
+                    # 增强红色和黄色，降低蓝色
+                    new_r = min(1.0, r_val * 1.2 + 0.1)  # 增强红色
+                    new_g = min(1.0, g_val * 1.1 + 0.05)  # 轻微增强绿色
+                    new_b = max(0.0, b_val * 0.8 - 0.1)   # 降低蓝色
+                    
+                    # 添加复古色调（偏黄）
+                    new_r = min(1.0, new_r + 0.05)
+                    new_g = min(1.0, new_g + 0.03)
+                    
+                    # 添加轻微的对比度增强
+                    new_r = (new_r - 0.5) * 1.1 + 0.5
+                    new_g = (new_g - 0.5) * 1.1 + 0.5
+                    new_b = (new_b - 0.5) * 1.1 + 0.5
+                    
+                    # 确保值在0-1范围内
+                    new_r = max(0.0, min(1.0, new_r))
+                    new_g = max(0.0, min(1.0, new_g))
+                    new_b = max(0.0, min(1.0, new_b))
+                    
+                    lut_data.append(f"{new_r:.6f} {new_g:.6f} {new_b:.6f}")
+        
+        # 构建.cube格式内容
+        cube_content = f"""TITLE "TT Retro Warm LUT"
+LUT_3D_SIZE {lut_size}
+DOMAIN_MIN 0.0 0.0 0.0
+DOMAIN_MAX 1.0 1.0 1.0
+
+"""
+        cube_content += "\n".join(lut_data)
+        
+        return cube_content
+    
+    @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "images": ("IMAGE",),
-                "lut_file": ("STRING", {"default": "", "multiline": False}),
+                "lut_content": ("STRING", {"default": cls._get_default_lut(), "multiline": True}),
                 "lut_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "LUT色彩查找表节点\n支持.cube格式的LUT文件\nLUT强度：0.0到1.0（1.0为完全应用）\n适用于电影级调色和专业色彩校正\n请确保LUT文件路径正确", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "LUT色彩查找表节点\n支持.cube格式的LUT文件内容\nLUT强度：0.0到1.0（1.0为完全应用）\n适用于电影级调色和专业色彩校正\n默认提供复古暖色调LUT效果", "multiline": True}),
             }
         }
     
@@ -25,13 +79,13 @@ class TTImgLUTNode:
     FUNCTION = "apply_lut"
     CATEGORY = "TT Tools"
     
-    def apply_lut(self, images, lut_file="", lut_strength=1.0, usage_notes=None):
+    def apply_lut(self, images, lut_content="", lut_strength=1.0, usage_notes=None):
         """
         对输入图像应用LUT色彩查找表
         
         Args:
             images: 输入的图像张量 (batch_size, height, width, channels)
-            lut_file: LUT文件路径
+            lut_content: LUT文件内容（.cube格式）
             lut_strength: LUT应用强度 (0.0 到 1.0，1.0为完全应用)
             usage_notes: 使用说明
         
@@ -39,15 +93,15 @@ class TTImgLUTNode:
             tuple: 处理后的图像张量
         """
         try:
-            # 检查LUT文件是否存在
-            if not lut_file or not os.path.exists(lut_file):
-                print(f"Warning: LUT file not found: {lut_file}")
+            # 检查LUT内容是否为空
+            if not lut_content or not lut_content.strip():
+                print("Warning: LUT content is empty")
                 return (images,)
             
             # 加载LUT
-            lut_table = self._load_lut_file(lut_file)
+            lut_table = self._load_lut_content(lut_content)
             if lut_table is None:
-                print(f"Error: Failed to load LUT file: {lut_file}")
+                print("Error: Failed to load LUT content")
                 return (images,)
             
             # 将ComfyUI的torch张量转换为numpy数组进行处理
@@ -78,7 +132,7 @@ class TTImgLUTNode:
                 print(f"=== TT Image LUT 使用说明 ===")
                 print(usage_notes)
                 print(f"=== 处理完成 ===")
-                print(f"LUT文件: {os.path.basename(lut_file)}")
+                print(f"LUT内容长度: {len(lut_content)} 字符")
                 print(f"LUT强度: {lut_strength}")
                 print(f"处理图像数量: {len(images)}")
                 print(f"输出图像尺寸: {output_tensor.shape}")
@@ -90,42 +144,40 @@ class TTImgLUTNode:
             # 返回原始图像作为错误处理
             return (images,)
     
-    def _load_lut_file(self, lut_file_path: str) -> np.ndarray:
+    def _load_lut_content(self, lut_content: str) -> np.ndarray:
         """
-        加载LUT文件
+        加载LUT内容
         
         Args:
-            lut_file_path: LUT文件路径
+            lut_content: LUT文件内容字符串
         
         Returns:
             np.ndarray: LUT查找表，形状为(64, 64, 64, 3)或None
         """
         try:
-            file_ext = os.path.splitext(lut_file_path)[1].lower()
-            
-            if file_ext == '.cube':
-                return self._load_cube_lut(lut_file_path)
+            # 检查内容是否包含.cube格式的特征
+            if 'LUT_3D_SIZE' in lut_content or lut_content.strip().startswith('TITLE'):
+                return self._load_cube_lut_content(lut_content)
             else:
-                print(f"Unsupported LUT file format: {file_ext}")
+                print("Unsupported LUT content format. Please provide .cube format content.")
                 return None
                 
         except Exception as e:
-            print(f"Error loading LUT file: {str(e)}")
+            print(f"Error loading LUT content: {str(e)}")
             return None
     
-    def _load_cube_lut(self, cube_file_path: str) -> np.ndarray:
+    def _load_cube_lut_content(self, cube_content: str) -> np.ndarray:
         """
-        加载.cube格式的LUT文件
+        加载.cube格式的LUT内容
         
         Args:
-            cube_file_path: .cube文件路径
+            cube_content: .cube文件内容字符串
         
         Returns:
             np.ndarray: LUT查找表，形状为(64, 64, 64, 3)
         """
         try:
-            with open(cube_file_path, 'r') as f:
-                lines = f.readlines()
+            lines = cube_content.strip().split('\n')
             
             # 解析LUT_SIZE
             lut_size = 64  # 默认大小
@@ -151,7 +203,7 @@ class TTImgLUTNode:
                         continue
             
             if data_start == -1:
-                print("Error: Could not find LUT data in cube file")
+                print("Error: Could not find LUT data in cube content")
                 return None
             
             # 读取LUT数据
@@ -177,7 +229,7 @@ class TTImgLUTNode:
             return lut_table
             
         except Exception as e:
-            print(f"Error loading cube LUT: {str(e)}")
+            print(f"Error loading cube LUT content: {str(e)}")
             return None
     
     def _apply_lut_to_image(self, image: np.ndarray, lut_table: np.ndarray, strength: float) -> np.ndarray:
