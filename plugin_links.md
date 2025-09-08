@@ -10,25 +10,29 @@
             line-height: 1.6;
             margin: 0;
             padding: 20px;
-            background-color: #f5f5f5;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            min-height: 100vh;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
+            background: rgba(30, 30, 46, 0.95);
             padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
         }
         h1 {
-            color: #333;
+            color: #ffffff;
             text-align: center;
             margin-bottom: 10px;
             font-size: 2.5em;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
         .subtitle {
             text-align: center;
-            color: #666;
+            color: #b0b0b0;
             margin-bottom: 30px;
             font-size: 1.1em;
         }
@@ -36,45 +40,53 @@
             width: 100%;
             border-collapse: collapse;
             margin: 20px 0;
-            background: white;
+            background: rgba(40, 40, 60, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
         }
         th, td {
             padding: 15px;
             text-align: left;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            color: #ffffff;
         }
         th {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #667eea, #764ba2);
             font-weight: 600;
-            color: #333;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
         tr:hover {
-            background-color: #f5f5f5;
+            background: rgba(102, 126, 234, 0.1);
         }
         a {
-            color: #007bff;
+            color: #64b5f6;
             text-decoration: none;
             padding: 8px 16px;
-            border-radius: 5px;
+            border-radius: 8px;
             display: inline-block;
             transition: all 0.3s ease;
+            background: rgba(100, 181, 246, 0.1);
+            border: 1px solid rgba(100, 181, 246, 0.3);
         }
         a:hover {
-            background-color: #007bff;
+            background: linear-gradient(135deg, #64b5f6, #42a5f5);
             color: white;
-            transform: translateY(-1px);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
         }
         .footer {
             text-align: center;
             margin-top: 30px;
-            color: #666;
+            color: #b0b0b0;
             font-style: italic;
         }
         .divider {
             height: 2px;
-            background: linear-gradient(to right, #007bff, #28a745);
+            background: linear-gradient(to right, #64b5f6, #42a5f5, #26c6da);
             margin: 30px 0;
             border: none;
+            border-radius: 1px;
         }
     </style>
 </head>
