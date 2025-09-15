@@ -14,15 +14,41 @@ class TTImgUtils:
         os.makedirs(self.temp_dir, exist_ok=True)
     
     def images_to_mp4(self, images: List[np.ndarray], fps: float) -> str:
-        """将多张图片转换为MP4视频"""
+        """将多张图片转换为MP4视频（iPhone兼容版本）"""
         temp_path = os.path.join(self.temp_dir, "temp_video.mp4")
         
         # 获取图片尺寸
         height, width = images[0].shape[:2]
         
-        # 创建视频写入器
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+        # 尝试多种编码器，优先使用iPhone兼容的
+        codecs_to_try = [
+            ('H264', 'H.264编码器'),
+            ('XVID', 'XVID编码器'),
+            ('MJPG', 'Motion JPEG编码器'),
+            ('mp4v', 'MP4V编码器')
+        ]
+        
+        out = None
+        for codec, description in codecs_to_try:
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*codec)
+                out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+                
+                # 测试写入器是否可用
+                if out.isOpened():
+                    print(f"使用编码器: {description}")
+                    break
+                else:
+                    out.release()
+                    out = None
+            except Exception as e:
+                print(f"编码器 {codec} 不可用: {e}")
+                if out:
+                    out.release()
+                    out = None
+        
+        if out is None:
+            raise RuntimeError("无法创建视频写入器，请检查OpenCV安装")
         
         try:
             for img in images:
@@ -38,24 +64,188 @@ class TTImgUtils:
                 if img_bgr.dtype != np.uint8:
                     img_bgr = (img_bgr * 255).astype(np.uint8)
                 
+                # 确保图片数据范围在0-255之间
+                img_bgr = np.clip(img_bgr, 0, 255).astype(np.uint8)
+                
                 out.write(img_bgr)
         finally:
             out.release()
         
         return temp_path
     
-    def image_to_jpg(self, image: np.ndarray, quality: int) -> str:
-        """将单张图片转换为JPG格式"""
+    def images_to_iphone_mp4(self, images: List[np.ndarray], fps: float) -> str:
+        """专门为iPhone优化的MP4视频转换"""
+        temp_path = os.path.join(self.temp_dir, "iphone_video.mp4")
+        
+        # 获取图片尺寸
+        height, width = images[0].shape[:2]
+        
+        # 确保尺寸是偶数（H.264要求）
+        if width % 2 != 0:
+            width += 1
+        if height % 2 != 0:
+            height += 1
+        
+        # 调整图片尺寸
+        resized_images = []
+        for img in images:
+            if img.shape[1] != width or img.shape[0] != height:
+                img_resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
+            else:
+                img_resized = img
+            resized_images.append(img_resized)
+        
+        # 使用H.264编码器，iPhone最佳兼容性
+        fourcc = cv2.VideoWriter_fourcc(*'H264')
+        out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+        
+        if not out.isOpened():
+            # 如果H264不可用，尝试其他编码器
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+        
+        if not out.isOpened():
+            raise RuntimeError("无法创建iPhone兼容的视频写入器")
+        
+        try:
+            for img in resized_images:
+                # 确保图片是BGR格式（OpenCV要求）
+                if len(img.shape) == 3 and img.shape[2] == 3:
+                    # RGB转BGR
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                else:
+                    # 灰度图转BGR
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                
+                # 确保图片是uint8类型
+                if img_bgr.dtype != np.uint8:
+                    img_bgr = (img_bgr * 255).astype(np.uint8)
+                
+                # 确保图片数据范围在0-255之间
+                img_bgr = np.clip(img_bgr, 0, 255).astype(np.uint8)
+                
+                out.write(img_bgr)
+        finally:
+            out.release()
+        
+        return temp_path
+    
+    def image_to_jpg(self, image: np.ndarray, quality: int = 95) -> str:
+        """将单张图片转换为JPG格式（手机兼容版本）"""
         temp_path = os.path.join(self.temp_dir, "temp_image.jpg")
+        
+        # 确保图片数据类型正确
+        if image.dtype != np.uint8:
+            # 如果是浮点数，假设范围是0-1
+            if image.dtype == np.float32 or image.dtype == np.float64:
+                image = (image * 255).astype(np.uint8)
+            else:
+                image = image.astype(np.uint8)
+        
+        # 确保像素值在有效范围内
+        image = np.clip(image, 0, 255)
         
         # 转换为PIL Image
         if len(image.shape) == 3 and image.shape[2] == 3:
             pil_image = Image.fromarray(image, 'RGB')
+        elif len(image.shape) == 3 and image.shape[2] == 4:
+            # RGBA转RGB
+            pil_image = Image.fromarray(image, 'RGBA').convert('RGB')
+        else:
+            # 灰度图转RGB
+            pil_image = Image.fromarray(image, 'L').convert('RGB')
+        
+        # 保存为JPG，使用兼容性参数
+        pil_image.save(temp_path, 'JPEG', 
+                      quality=quality,
+                      optimize=True,
+                      progressive=True,
+                      subsampling=0)  # 禁用子采样，提高兼容性
+        
+        return temp_path
+    
+    def image_to_mobile_jpg(self, image: np.ndarray, quality: int = 90) -> str:
+        """专门为手机优化的JPG转换（最大兼容性）"""
+        temp_path = os.path.join(self.temp_dir, "mobile_image.jpg")
+        
+        # 确保图片数据类型正确
+        if image.dtype != np.uint8:
+            if image.dtype == np.float32 or image.dtype == np.float64:
+                # 浮点数范围检查
+                if image.max() <= 1.0:
+                    image = (image * 255).astype(np.uint8)
+                else:
+                    image = image.astype(np.uint8)
+            else:
+                image = image.astype(np.uint8)
+        
+        # 严格限制像素值范围
+        image = np.clip(image, 0, 255)
+        
+        # 处理不同格式的图片
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            # RGB图片
+            pil_image = Image.fromarray(image, 'RGB')
+        elif len(image.shape) == 3 and image.shape[2] == 4:
+            # RGBA图片，转换为RGB
+            pil_image = Image.fromarray(image, 'RGBA').convert('RGB')
+        elif len(image.shape) == 2:
+            # 灰度图片，转换为RGB
+            pil_image = Image.fromarray(image, 'L').convert('RGB')
+        else:
+            raise ValueError(f"不支持的图片格式: {image.shape}")
+        
+        # 确保图片尺寸合理（避免过大导致内存问题）
+        max_size = 4096
+        if pil_image.width > max_size or pil_image.height > max_size:
+            pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
+        # 保存为JPG，使用最兼容的参数
+        pil_image.save(temp_path, 'JPEG', 
+                      quality=quality,
+                      optimize=True,
+                      progressive=True,
+                      subsampling=0,  # 禁用色度子采样
+                      qtables='web_low')  # 使用web优化量化表
+        
+        return temp_path
+    
+    def image_to_ultra_compatible_jpg(self, image: np.ndarray) -> str:
+        """超兼容JPG转换（适用于所有设备）"""
+        temp_path = os.path.join(self.temp_dir, "ultra_compatible.jpg")
+        
+        # 数据类型转换
+        if image.dtype != np.uint8:
+            if image.dtype in [np.float32, np.float64]:
+                if image.max() <= 1.0:
+                    image = (image * 255).astype(np.uint8)
+                else:
+                    image = np.clip(image, 0, 255).astype(np.uint8)
+            else:
+                image = image.astype(np.uint8)
+        
+        # 像素值范围限制
+        image = np.clip(image, 0, 255)
+        
+        # 转换为PIL Image
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            pil_image = Image.fromarray(image, 'RGB')
+        elif len(image.shape) == 3 and image.shape[2] == 4:
+            pil_image = Image.fromarray(image, 'RGBA').convert('RGB')
         else:
             pil_image = Image.fromarray(image, 'L').convert('RGB')
         
-        # 保存为JPG
-        pil_image.save(temp_path, 'JPEG', quality=quality)
+        # 限制最大尺寸（避免某些设备无法处理大图）
+        max_dimension = 2048
+        if pil_image.width > max_dimension or pil_image.height > max_dimension:
+            pil_image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
+        
+        # 使用最保守的JPG参数
+        pil_image.save(temp_path, 'JPEG', 
+                      quality=85,  # 适中的质量
+                      optimize=True,
+                      progressive=False,  # 不使用渐进式，提高兼容性
+                      subsampling=0)  # 禁用子采样
         
         return temp_path
     
