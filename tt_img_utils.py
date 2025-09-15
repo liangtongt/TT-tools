@@ -78,10 +78,10 @@ class TTImgUtils:
         """智能创建视频写入器，自动选择最佳编码器"""
         # 尝试多种编码器，按优先级排序
         codecs_to_try = [
-            ('avc1', 'AVC1编码器 (iPhone兼容)'),
-            ('XVID', 'XVID编码器'),
+            ('XVID', 'XVID编码器 (体积小)'),
             ('MJPG', 'Motion JPEG编码器'),
             ('mp4v', 'MP4V编码器'),
+            ('avc1', 'AVC1编码器 (iPhone兼容)'),
             ('H264', 'H.264编码器')
         ]
         
@@ -127,7 +127,7 @@ class TTImgUtils:
                 cv2.imwrite(temp_img_path, img)
                 temp_images.append(temp_img_path)
             
-            # 使用FFmpeg创建视频
+            # 使用FFmpeg创建视频（优化文件体积）
             cmd = [
                 'ffmpeg',
                 '-y',  # 覆盖输出文件
@@ -135,7 +135,12 @@ class TTImgUtils:
                 '-i', os.path.join(temp_dir, 'frame_%06d.jpg'),
                 '-c:v', 'libx264',  # 使用H.264编码器
                 '-pix_fmt', 'yuv420p',  # iPhone兼容的像素格式
-                '-crf', '23',  # 质量设置
+                '-crf', '28',  # 更高的压缩率（23->28，文件更小）
+                '-preset', 'fast',  # 快速编码
+                '-tune', 'stillimage',  # 针对静态图片优化
+                '-movflags', '+faststart',  # 优化网络播放
+                '-profile:v', 'baseline',  # 基础配置文件，兼容性更好
+                '-level', '3.0',  # 编码级别
                 output_path
             ]
             
@@ -159,6 +164,124 @@ class TTImgUtils:
             raise RuntimeError("无法创建视频：OpenCV和FFmpeg都不可用")
         except Exception as e:
             print(f"FFmpeg创建视频异常: {e}")
+            raise RuntimeError(f"视频创建失败: {e}")
+    
+    def images_to_small_mp4(self, images: List[np.ndarray], fps: float) -> str:
+        """生成小体积的MP4视频"""
+        temp_path = os.path.join(self.temp_dir, "small_video.mp4")
+        
+        # 获取图片尺寸
+        height, width = images[0].shape[:2]
+        
+        # 确保尺寸是偶数
+        if width % 2 != 0:
+            width += 1
+        if height % 2 != 0:
+            height += 1
+        
+        # 调整图片尺寸
+        resized_images = self._batch_resize_images(images, width, height)
+        
+        # 优先使用体积小的编码器
+        codecs_to_try = [
+            ('XVID', 'XVID编码器 (体积最小)'),
+            ('MJPG', 'Motion JPEG编码器'),
+            ('mp4v', 'MP4V编码器')
+        ]
+        
+        out = None
+        for codec, description in codecs_to_try:
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*codec)
+                out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+                
+                if out.isOpened():
+                    print(f"使用小体积编码器: {description}")
+                    break
+                else:
+                    out.release()
+                    out = None
+            except Exception as e:
+                print(f"编码器 {codec} 不可用: {e}")
+                if out:
+                    out.release()
+                    out = None
+        
+        if out is None or not out.isOpened():
+            # 如果OpenCV失败，使用FFmpeg生成小体积视频
+            print("OpenCV失败，使用FFmpeg生成小体积视频...")
+            return self._create_small_video_with_ffmpeg(resized_images, temp_path, fps, width, height)
+        
+        try:
+            for img in resized_images:
+                # 确保图片是BGR格式
+                if len(img.shape) == 3 and img.shape[2] == 3:
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                else:
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                
+                if img_bgr.dtype != np.uint8:
+                    img_bgr = np.clip(img_bgr, 0, 255).astype(np.uint8)
+                
+                out.write(img_bgr)
+        finally:
+            out.release()
+        
+        return temp_path
+    
+    def _create_small_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int) -> str:
+        """使用FFmpeg创建小体积视频"""
+        try:
+            # 创建临时目录存储图片
+            temp_dir = os.path.join(self.temp_dir, "small_ffmpeg_temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # 保存所有图片为临时文件
+            temp_images = []
+            for i, img in enumerate(images):
+                temp_img_path = os.path.join(temp_dir, f"frame_{i:06d}.jpg")
+                # 使用较低质量保存图片以减小体积
+                cv2.imwrite(temp_img_path, img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+                temp_images.append(temp_img_path)
+            
+            # 使用FFmpeg创建小体积视频
+            cmd = [
+                'ffmpeg',
+                '-y',  # 覆盖输出文件
+                '-framerate', str(fps),
+                '-i', os.path.join(temp_dir, 'frame_%06d.jpg'),
+                '-c:v', 'libx264',  # 使用H.264编码器
+                '-pix_fmt', 'yuv420p',  # iPhone兼容的像素格式
+                '-crf', '32',  # 更高的压缩率（文件更小）
+                '-preset', 'ultrafast',  # 最快编码
+                '-tune', 'stillimage',  # 针对静态图片优化
+                '-profile:v', 'baseline',  # 基础配置文件
+                '-level', '3.0',  # 编码级别
+                '-maxrate', '500k',  # 最大比特率限制
+                '-bufsize', '1000k',  # 缓冲区大小
+                output_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            # 清理临时文件
+            for temp_img in temp_images:
+                if os.path.exists(temp_img):
+                    os.remove(temp_img)
+            os.rmdir(temp_dir)
+            
+            if result.returncode == 0:
+                print("成功使用FFmpeg创建小体积视频")
+                return output_path
+            else:
+                print(f"FFmpeg创建小体积视频失败: {result.stderr}")
+                raise RuntimeError(f"FFmpeg错误: {result.stderr}")
+                
+        except FileNotFoundError:
+            print("FFmpeg不可用")
+            raise RuntimeError("无法创建视频：FFmpeg不可用")
+        except Exception as e:
+            print(f"FFmpeg创建小体积视频异常: {e}")
             raise RuntimeError(f"视频创建失败: {e}")
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio) -> str:
