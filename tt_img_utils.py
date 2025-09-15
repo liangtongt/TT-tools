@@ -20,66 +20,6 @@ class TTImgUtils:
         # 获取图片尺寸
         height, width = images[0].shape[:2]
         
-        # 尝试多种编码器，优先使用iPhone兼容的
-        codecs_to_try = [
-            ('H264', 'H.264编码器'),
-            ('XVID', 'XVID编码器'),
-            ('MJPG', 'Motion JPEG编码器'),
-            ('mp4v', 'MP4V编码器')
-        ]
-        
-        out = None
-        for codec, description in codecs_to_try:
-            try:
-                fourcc = cv2.VideoWriter_fourcc(*codec)
-                out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
-                
-                # 测试写入器是否可用
-                if out.isOpened():
-                    print(f"使用编码器: {description}")
-                    break
-                else:
-                    out.release()
-                    out = None
-            except Exception as e:
-                print(f"编码器 {codec} 不可用: {e}")
-                if out:
-                    out.release()
-                    out = None
-        
-        if out is None:
-            raise RuntimeError("无法创建视频写入器，请检查OpenCV安装")
-        
-        try:
-            for img in images:
-                # 确保图片是BGR格式（OpenCV要求）
-                if len(img.shape) == 3 and img.shape[2] == 3:
-                    # RGB转BGR
-                    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-                else:
-                    # 灰度图转BGR
-                    img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-                
-                # 确保图片是uint8类型
-                if img_bgr.dtype != np.uint8:
-                    img_bgr = (img_bgr * 255).astype(np.uint8)
-                
-                # 确保图片数据范围在0-255之间
-                img_bgr = np.clip(img_bgr, 0, 255).astype(np.uint8)
-                
-                out.write(img_bgr)
-        finally:
-            out.release()
-        
-        return temp_path
-    
-    def images_to_iphone_mp4(self, images: List[np.ndarray], fps: float) -> str:
-        """专门为iPhone优化的MP4视频转换"""
-        temp_path = os.path.join(self.temp_dir, "iphone_video.mp4")
-        
-        # 获取图片尺寸
-        height, width = images[0].shape[:2]
-        
         # 确保尺寸是偶数（H.264要求）
         if width % 2 != 0:
             width += 1
@@ -95,17 +35,37 @@ class TTImgUtils:
                 img_resized = img
             resized_images.append(img_resized)
         
-        # 使用H.264编码器，iPhone最佳兼容性
+        # 优先使用H.264编码器，iPhone最佳兼容性
         fourcc = cv2.VideoWriter_fourcc(*'H264')
         out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
         
         if not out.isOpened():
             # 如果H264不可用，尝试其他编码器
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+            print("H264编码器不可用，尝试其他编码器...")
+            codecs_to_try = [
+                ('XVID', 'XVID编码器'),
+                ('MJPG', 'Motion JPEG编码器'),
+                ('mp4v', 'MP4V编码器')
+            ]
+            
+            for codec, description in codecs_to_try:
+                try:
+                    fourcc = cv2.VideoWriter_fourcc(*codec)
+                    out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+                    if out.isOpened():
+                        print(f"使用编码器: {description}")
+                        break
+                    else:
+                        out.release()
+                        out = None
+                except Exception as e:
+                    print(f"编码器 {codec} 不可用: {e}")
+                    if out:
+                        out.release()
+                        out = None
         
-        if not out.isOpened():
-            raise RuntimeError("无法创建iPhone兼容的视频写入器")
+        if out is None or not out.isOpened():
+            raise RuntimeError("无法创建视频写入器，请检查OpenCV安装")
         
         try:
             for img in resized_images:
@@ -131,7 +91,7 @@ class TTImgUtils:
         return temp_path
     
     def image_to_jpg(self, image: np.ndarray, quality: int = 95) -> str:
-        """将单张图片转换为JPG格式（手机兼容版本）"""
+        """将单张图片转换为JPG格式（手机兼容版本，无尺寸限制）"""
         temp_path = os.path.join(self.temp_dir, "temp_image.jpg")
         
         # 确保图片数据类型正确
@@ -155,7 +115,7 @@ class TTImgUtils:
             # 灰度图转RGB
             pil_image = Image.fromarray(image, 'L').convert('RGB')
         
-        # 保存为JPG，使用兼容性参数
+        # 保存为JPG，使用兼容性参数（无尺寸限制）
         pil_image.save(temp_path, 'JPEG', 
                       quality=quality,
                       optimize=True,
