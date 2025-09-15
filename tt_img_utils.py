@@ -171,59 +171,73 @@ class TTImgUtils:
         # 如果audio是LazyAudioMap（ComfyUI-VideoHelperSuite格式）
         elif hasattr(audio, '__class__') and 'LazyAudioMap' in str(type(audio)):
             try:
-                # 调试：打印LazyAudioMap的属性
-                print(f"LazyAudioMap类型: {type(audio)}")
-                print(f"LazyAudioMap属性: {dir(audio)}")
+                print(f"处理LazyAudioMap: {type(audio)}")
                 
-                # 尝试获取音频数据
-                if hasattr(audio, 'samples'):
-                    audio_data = audio.samples
-                    if hasattr(audio_data, 'cpu'):
-                        audio_data = audio_data.cpu().numpy()
-                    
-                    # 获取采样率
-                    sample_rate = getattr(audio, 'sample_rate', 44100)
-                    
-                    # 保存音频文件
-                    import soundfile as sf
-                    sf.write(audio_path, audio_data, sample_rate)
-                    return audio_path
+                # 根据调试信息，LazyAudioMap有'file'属性
+                if hasattr(audio, 'file') and audio.file:
+                    print(f"LazyAudioMap.file: {audio.file}")
+                    if os.path.exists(audio.file):
+                        import shutil
+                        shutil.copy2(audio.file, audio_path)
+                        print(f"成功复制音频文件: {audio.file} -> {audio_path}")
+                        return audio_path
+                    else:
+                        print(f"音频文件不存在: {audio.file}")
                 
-                # 如果LazyAudioMap有文件路径属性
-                elif hasattr(audio, 'file_path') and audio.file_path:
-                    import shutil
-                    shutil.copy2(audio.file_path, audio_path)
-                    return audio_path
-                
-                # 如果LazyAudioMap有路径属性
-                elif hasattr(audio, 'path') and audio.path:
-                    import shutil
-                    shutil.copy2(audio.path, audio_path)
-                    return audio_path
-                
-                # 尝试调用LazyAudioMap的方法
-                elif hasattr(audio, 'load'):
-                    try:
-                        loaded_audio = audio.load()
-                        if isinstance(loaded_audio, np.ndarray):
+                # 尝试通过索引访问音频数据
+                try:
+                    # LazyAudioMap可能支持索引访问
+                    audio_data = audio[0] if len(audio) > 0 else None
+                    if audio_data is not None:
+                        if isinstance(audio_data, np.ndarray):
                             import soundfile as sf
-                            sf.write(audio_path, loaded_audio, 44100)
+                            sf.write(audio_path, audio_data, 44100)
+                            print(f"成功从索引获取音频数据")
                             return audio_path
-                        elif hasattr(loaded_audio, 'cpu'):
-                            audio_np = loaded_audio.cpu().numpy()
+                        elif hasattr(audio_data, 'cpu'):
+                            audio_np = audio_data.cpu().numpy()
                             import soundfile as sf
                             sf.write(audio_path, audio_np, 44100)
+                            print(f"成功从索引获取音频张量数据")
                             return audio_path
-                    except Exception as e:
-                        print(f"调用load()方法失败: {e}")
+                except Exception as e:
+                    print(f"通过索引访问音频数据失败: {e}")
                 
-                # 尝试获取音频文件路径
-                elif hasattr(audio, 'audio_path'):
-                    audio_file_path = audio.audio_path
-                    if os.path.exists(audio_file_path):
-                        import shutil
-                        shutil.copy2(audio_file_path, audio_path)
-                        return audio_path
+                # 尝试通过get方法获取音频数据
+                try:
+                    audio_data = audio.get('samples') or audio.get('data') or audio.get('audio')
+                    if audio_data is not None:
+                        if isinstance(audio_data, np.ndarray):
+                            import soundfile as sf
+                            sf.write(audio_path, audio_data, 44100)
+                            print(f"成功通过get方法获取音频数据")
+                            return audio_path
+                        elif hasattr(audio_data, 'cpu'):
+                            audio_np = audio_data.cpu().numpy()
+                            import soundfile as sf
+                            sf.write(audio_path, audio_np, 44100)
+                            print(f"成功通过get方法获取音频张量数据")
+                            return audio_path
+                except Exception as e:
+                    print(f"通过get方法获取音频数据失败: {e}")
+                
+                # 尝试迭代访问音频数据
+                try:
+                    for item in audio:
+                        if isinstance(item, np.ndarray):
+                            import soundfile as sf
+                            sf.write(audio_path, item, 44100)
+                            print(f"成功通过迭代获取音频数据")
+                            return audio_path
+                        elif hasattr(item, 'cpu'):
+                            audio_np = item.cpu().numpy()
+                            import soundfile as sf
+                            sf.write(audio_path, audio_np, 44100)
+                            print(f"成功通过迭代获取音频张量数据")
+                            return audio_path
+                        break  # 只取第一个元素
+                except Exception as e:
+                    print(f"通过迭代获取音频数据失败: {e}")
                     
             except Exception as e:
                 print(f"处理LazyAudioMap失败: {e}")
