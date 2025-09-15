@@ -3,6 +3,8 @@ from PIL import Image
 import numpy as np
 import cv2
 from typing import List
+import subprocess
+import tempfile
 
 
 class TTImgUtils:
@@ -89,6 +91,116 @@ class TTImgUtils:
             out.release()
         
         return temp_path
+    
+    def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio) -> str:
+        """将多张图片转换为带音频的MP4视频（iPhone兼容版本）"""
+        # 先生成无音频的MP4
+        video_path = self.images_to_mp4(images, fps)
+        
+        # 如果没有音频，直接返回视频
+        if audio is None:
+            return video_path
+        
+        # 创建带音频的MP4
+        audio_video_path = os.path.join(self.temp_dir, "temp_video_with_audio.mp4")
+        
+        try:
+            # 处理音频数据
+            audio_path = self._process_audio_input(audio)
+            
+            # 使用FFmpeg合成音频和视频
+            self._merge_audio_video(video_path, audio_path, audio_video_path)
+            
+            # 清理临时音频文件
+            if audio_path and os.path.exists(audio_path):
+                os.remove(audio_path)
+            
+            # 清理原始视频文件
+            if os.path.exists(video_path):
+                os.remove(video_path)
+            
+            return audio_video_path
+            
+        except Exception as e:
+            print(f"音频合成失败: {e}")
+            # 如果音频合成失败，返回原始视频
+            return video_path
+    
+    def _process_audio_input(self, audio) -> str:
+        """处理音频输入，返回临时音频文件路径"""
+        audio_path = os.path.join(self.temp_dir, "temp_audio.wav")
+        
+        # 如果audio是文件路径
+        if isinstance(audio, str) and os.path.exists(audio):
+            # 如果是音频文件，直接复制
+            import shutil
+            shutil.copy2(audio, audio_path)
+            return audio_path
+        
+        # 如果audio是numpy数组（音频数据）
+        elif isinstance(audio, np.ndarray):
+            # 将numpy数组保存为WAV文件
+            import soundfile as sf
+            sf.write(audio_path, audio, 44100)  # 默认采样率44.1kHz
+            return audio_path
+        
+        # 如果audio是torch张量
+        elif hasattr(audio, 'cpu'):
+            # 转换为numpy数组
+            audio_np = audio.cpu().numpy()
+            import soundfile as sf
+            sf.write(audio_path, audio_np, 44100)
+            return audio_path
+        
+        # 如果audio是字典（ComfyUI音频格式）
+        elif isinstance(audio, dict):
+            if 'samples' in audio:
+                # 提取音频数据
+                audio_data = audio['samples']
+                if hasattr(audio_data, 'cpu'):
+                    audio_data = audio_data.cpu().numpy()
+                
+                # 获取采样率
+                sample_rate = audio.get('sample_rate', 44100)
+                
+                # 保存音频文件
+                import soundfile as sf
+                sf.write(audio_path, audio_data, sample_rate)
+                return audio_path
+        
+        raise ValueError(f"不支持的音频格式: {type(audio)}")
+    
+    def _merge_audio_video(self, video_path: str, audio_path: str, output_path: str):
+        """使用FFmpeg合并音频和视频"""
+        try:
+            # 使用FFmpeg命令合并音频和视频
+            cmd = [
+                'ffmpeg',
+                '-i', video_path,  # 输入视频
+                '-i', audio_path,  # 输入音频
+                '-c:v', 'copy',    # 视频编码器：直接复制
+                '-c:a', 'aac',     # 音频编码器：AAC
+                '-shortest',       # 以最短的流为准
+                '-y',              # 覆盖输出文件
+                output_path
+            ]
+            
+            # 执行FFmpeg命令
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                raise RuntimeError(f"FFmpeg错误: {result.stderr}")
+                
+        except FileNotFoundError:
+            # 如果FFmpeg不可用，尝试使用OpenCV（但OpenCV不支持音频）
+            print("FFmpeg不可用，无法添加音频，返回无音频视频")
+            import shutil
+            shutil.copy2(video_path, output_path)
+        except Exception as e:
+            print(f"音频合并失败: {e}")
+            # 如果合并失败，复制原始视频
+            import shutil
+            shutil.copy2(video_path, output_path)
     
     def image_to_jpg(self, image: np.ndarray, quality: int = 95) -> str:
         """将单张图片转换为JPG格式（手机兼容版本，无尺寸限制）"""

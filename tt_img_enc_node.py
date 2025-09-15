@@ -22,6 +22,7 @@ class TTImgEncNode:
                 "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
             },
             "optional": {
+                "audio": ("AUDIO",),  # 可选的音频输入
                 "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片，配合配套的本地解码软件，即可获取原文件\n即使被RH加了水印也能正常解码\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
@@ -32,7 +33,7 @@ class TTImgEncNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, fps=16.0, quality=95, usage_notes=None):
+    def process_images(self, images, fps=16.0, quality=95, audio=None, usage_notes=None):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片
         """
@@ -62,10 +63,15 @@ class TTImgEncNode:
             
             if num_images > 1:
                 # 多张图片，转换为MP4
-                temp_file = self.utils.images_to_mp4(numpy_images, fps)
+                if audio is not None:
+                    # 如果有音频输入，合成带音频的MP4
+                    temp_file = self.utils.images_to_mp4_with_audio(numpy_images, fps, audio)
+                else:
+                    # 没有音频，生成普通MP4
+                    temp_file = self.utils.images_to_mp4(numpy_images, fps)
                 file_extension = "mp4"
             else:
-                # 单张图片，转换为JPG
+                # 单张图片，转换为JPG（音频对单张图片无效）
                 temp_file = self.utils.image_to_jpg(numpy_images[0], quality)
                 file_extension = "jpg"
             
