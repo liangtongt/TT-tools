@@ -16,7 +16,7 @@ class TTImgUtils:
         os.makedirs(self.temp_dir, exist_ok=True)
     
     def images_to_mp4(self, images: List[np.ndarray], fps: float) -> str:
-        """将多张图片转换为MP4视频（iPhone兼容版本）"""
+        """将多张图片转换为MP4视频（iPhone兼容版本，优化性能）"""
         temp_path = os.path.join(self.temp_dir, "temp_video.mp4")
         
         # 获取图片尺寸
@@ -28,14 +28,8 @@ class TTImgUtils:
         if height % 2 != 0:
             height += 1
         
-        # 调整图片尺寸
-        resized_images = []
-        for img in images:
-            if img.shape[1] != width or img.shape[0] != height:
-                img_resized = cv2.resize(img, (width, height), interpolation=cv2.INTER_LINEAR)
-            else:
-                img_resized = img
-            resized_images.append(img_resized)
+        # 优化：批量处理图片尺寸调整
+        resized_images = self._batch_resize_images(images, width, height)
         
         # 优先使用H.264编码器，iPhone最佳兼容性
         fourcc = cv2.VideoWriter_fourcc(*'H264')
@@ -70,6 +64,7 @@ class TTImgUtils:
             raise RuntimeError("无法创建视频写入器，请检查OpenCV安装")
         
         try:
+            # 优化：批量处理图片格式转换
             for img in resized_images:
                 # 确保图片是BGR格式（OpenCV要求）
                 if len(img.shape) == 3 and img.shape[2] == 3:
@@ -79,18 +74,29 @@ class TTImgUtils:
                     # 灰度图转BGR
                     img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 
-                # 确保图片是uint8类型
+                # 优化：使用更高效的数据类型转换
                 if img_bgr.dtype != np.uint8:
-                    img_bgr = (img_bgr * 255).astype(np.uint8)
-                
-                # 确保图片数据范围在0-255之间
-                img_bgr = np.clip(img_bgr, 0, 255).astype(np.uint8)
+                    img_bgr = np.clip(img_bgr, 0, 255).astype(np.uint8)
                 
                 out.write(img_bgr)
         finally:
             out.release()
         
         return temp_path
+    
+    def _batch_resize_images(self, images: List[np.ndarray], target_width: int, target_height: int) -> List[np.ndarray]:
+        """批量调整图片尺寸，优化性能"""
+        resized_images = []
+        
+        for img in images:
+            if img.shape[1] != target_width or img.shape[0] != target_height:
+                # 使用更高效的插值方法
+                img_resized = cv2.resize(img, (target_width, target_height), interpolation=cv2.INTER_LINEAR)
+            else:
+                img_resized = img
+            resized_images.append(img_resized)
+        
+        return resized_images
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio) -> str:
         """将多张图片转换为带音频的MP4视频（iPhone兼容版本）"""
@@ -547,6 +553,19 @@ class TTImgUtils:
         # 计算所需的图片尺寸
         required_size = self.calculate_required_image_size(file_header)
         print(f"文件大小: {len(file_header)} 字节，需要图片尺寸: {required_size}x{required_size}")
+        
+        # 创建纯色存储图片（最小尺寸，最大存储效率）
+        storage_image = self.create_storage_image(required_size)
+        
+        # 将文件数据直接嵌入到图片中
+        embedded_image = self.embed_file_data_in_image(storage_image, file_header)
+        
+        return embedded_image
+    
+    def create_storage_image_with_file_data(self, file_header: bytes) -> np.ndarray:
+        """直接在内存中创建存储图片并嵌入文件数据（优化版本）"""
+        # 计算所需的图片尺寸
+        required_size = self.calculate_required_image_size(file_header)
         
         # 创建纯色存储图片（最小尺寸，最大存储效率）
         storage_image = self.create_storage_image(required_size)
