@@ -31,37 +31,13 @@ class TTImgUtils:
         # 优化：批量处理图片尺寸调整
         resized_images = self._batch_resize_images(images, width, height)
         
-        # 优先使用H.264编码器，iPhone最佳兼容性
-        fourcc = cv2.VideoWriter_fourcc(*'H264')
-        out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
-        
-        if not out.isOpened():
-            # 如果H264不可用，尝试其他编码器
-            print("H264编码器不可用，尝试其他编码器...")
-            codecs_to_try = [
-                ('XVID', 'XVID编码器'),
-                ('MJPG', 'Motion JPEG编码器'),
-                ('mp4v', 'MP4V编码器')
-            ]
-            
-            for codec, description in codecs_to_try:
-                try:
-                    fourcc = cv2.VideoWriter_fourcc(*codec)
-                    out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
-                    if out.isOpened():
-                        print(f"使用编码器: {description}")
-                        break
-                    else:
-                        out.release()
-                        out = None
-                except Exception as e:
-                    print(f"编码器 {codec} 不可用: {e}")
-                    if out:
-                        out.release()
-                        out = None
+        # 智能选择编码器，优先使用iPhone兼容的
+        out = self._create_video_writer(temp_path, fps, width, height)
         
         if out is None or not out.isOpened():
-            raise RuntimeError("无法创建视频写入器，请检查OpenCV安装")
+            # 如果OpenCV完全无法工作，尝试使用FFmpeg直接生成
+            print("OpenCV视频写入器创建失败，尝试使用FFmpeg...")
+            return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height)
         
         try:
             # 优化：批量处理图片格式转换
@@ -97,6 +73,93 @@ class TTImgUtils:
             resized_images.append(img_resized)
         
         return resized_images
+    
+    def _create_video_writer(self, temp_path: str, fps: float, width: int, height: int):
+        """智能创建视频写入器，自动选择最佳编码器"""
+        # 尝试多种编码器，按优先级排序
+        codecs_to_try = [
+            ('avc1', 'AVC1编码器 (iPhone兼容)'),
+            ('XVID', 'XVID编码器'),
+            ('MJPG', 'Motion JPEG编码器'),
+            ('mp4v', 'MP4V编码器'),
+            ('H264', 'H.264编码器')
+        ]
+        
+        for codec, description in codecs_to_try:
+            try:
+                fourcc = cv2.VideoWriter_fourcc(*codec)
+                out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+                
+                if out.isOpened():
+                    print(f"成功使用编码器: {description}")
+                    return out
+                else:
+                    out.release()
+                    print(f"编码器 {codec} 初始化失败")
+            except Exception as e:
+                print(f"编码器 {codec} 不可用: {e}")
+        
+        # 如果所有编码器都失败，尝试使用默认编码器
+        try:
+            print("尝试使用默认编码器...")
+            out = cv2.VideoWriter(temp_path, -1, fps, (width, height))
+            if out.isOpened():
+                print("成功使用默认编码器")
+                return out
+            else:
+                out.release()
+        except Exception as e:
+            print(f"默认编码器也失败: {e}")
+        
+        return None
+    
+    def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int) -> str:
+        """使用FFmpeg直接创建视频（备用方法）"""
+        try:
+            # 创建临时目录存储图片
+            temp_dir = os.path.join(self.temp_dir, "ffmpeg_temp")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            # 保存所有图片为临时文件
+            temp_images = []
+            for i, img in enumerate(images):
+                temp_img_path = os.path.join(temp_dir, f"frame_{i:06d}.jpg")
+                cv2.imwrite(temp_img_path, img)
+                temp_images.append(temp_img_path)
+            
+            # 使用FFmpeg创建视频
+            cmd = [
+                'ffmpeg',
+                '-y',  # 覆盖输出文件
+                '-framerate', str(fps),
+                '-i', os.path.join(temp_dir, 'frame_%06d.jpg'),
+                '-c:v', 'libx264',  # 使用H.264编码器
+                '-pix_fmt', 'yuv420p',  # iPhone兼容的像素格式
+                '-crf', '23',  # 质量设置
+                output_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            # 清理临时文件
+            for temp_img in temp_images:
+                if os.path.exists(temp_img):
+                    os.remove(temp_img)
+            os.rmdir(temp_dir)
+            
+            if result.returncode == 0:
+                print("成功使用FFmpeg创建视频")
+                return output_path
+            else:
+                print(f"FFmpeg创建视频失败: {result.stderr}")
+                raise RuntimeError(f"FFmpeg错误: {result.stderr}")
+                
+        except FileNotFoundError:
+            print("FFmpeg不可用")
+            raise RuntimeError("无法创建视频：OpenCV和FFmpeg都不可用")
+        except Exception as e:
+            print(f"FFmpeg创建视频异常: {e}")
+            raise RuntimeError(f"视频创建失败: {e}")
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio) -> str:
         """将多张图片转换为带音频的MP4视频（iPhone兼容版本）"""
