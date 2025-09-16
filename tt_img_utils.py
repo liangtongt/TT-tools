@@ -621,52 +621,64 @@ class TTImgUtils:
         # 每个像素3个通道，每个通道1位
         bits_needed = len(data) * 8
         pixels_needed = bits_needed // 3
-        
-        # 考虑水印区域（使用5%的比例，与解码节点保持一致）
-        # 先估算一个合理的初始尺寸
-        estimated_size = int(np.ceil(np.sqrt(pixels_needed * 1.2)))  # 预留20%空间
+
+        # 仅在中间60%高度写入数据（上下各预留20%，用于水印/安全边界）
+        # 先估算一个合理的初始尺寸，预留20%额外冗余空间
+        estimated_size = int(np.ceil(np.sqrt(pixels_needed * 1.2)))
         estimated_size = max(64, estimated_size)
         estimated_size = ((estimated_size + 3) // 4) * 4  # 4的倍数对齐
-        
-        # 使用估算尺寸计算水印区域
-        watermark_height = int(estimated_size * 0.05)
-        
-        # 计算需要的总像素数（包括水印区域）
-        # 我们需要确保有足够的像素来存储数据，同时为水印区域预留空间
-        total_pixels_needed = pixels_needed + (watermark_height * estimated_size)
-        
-        # 计算正方形图片的边长
+
+        # 估算阶段的可用高度（中间60%）
+        top_skip_est = int(estimated_size * 0.20)
+        bottom_skip_est = int(estimated_size * 0.20)
+        available_height_est = estimated_size - top_skip_est - bottom_skip_est
+
+        # 计算需要的总像素数（包含跳过的上下边界行）
+        # 为保证可用区能容纳数据，等价于：
+        # available_height_est * estimated_size >= pixels_needed
+        if available_height_est <= 0:
+            available_height_est = max(1, available_height_est)
+        total_pixels_needed = pixels_needed + (top_skip_est + bottom_skip_est) * estimated_size
+
+        # 初步计算边长
         side_length = int(np.ceil(np.sqrt(total_pixels_needed)))
-        
-        # 确保最小尺寸为64
         side_length = max(64, side_length)
-        
-        # 向上取整到最近的4的倍数（更小的对齐，提高效率）
         side_length = ((side_length + 3) // 4) * 4
-        
-        # 验证计算是否正确
-        available_pixels = (side_length - watermark_height) * side_length
+
+        # 验证在中间60%区域内的容量是否足够
+        top_skip = int(side_length * 0.20)
+        bottom_skip = int(side_length * 0.20)
+        available_height = side_length - top_skip - bottom_skip
+        available_pixels = available_height * side_length
         required_pixels = pixels_needed
-        
+
         if available_pixels < required_pixels:
-            # 如果可用像素不够，增加图片尺寸
-            side_length = int(np.ceil(np.sqrt(required_pixels + watermark_height * side_length)))
-            side_length = ((side_length + 3) // 4) * 4
-        
+            # 若容量不足，再次放大边长（按所需可用像素反推）
+            needed_area = required_pixels + (top_skip + bottom_skip) * side_length
+            side_length = int(np.ceil(np.sqrt(max(needed_area, 1))))
+            side_length = ((max(64, side_length) + 3) // 4) * 4
+
         return side_length
     
     def embed_file_data_in_image(self, image: np.ndarray, file_header: bytes) -> np.ndarray:
         """将文件数据直接嵌入到图片中（不使用ZIP压缩）"""
-        # 计算可用区域（使用5%的比例，与解码节点保持一致）
-        watermark_height = int(image.shape[0] * 0.05)
-        available_height = image.shape[0] - watermark_height
+        # 仅在中间60%高度写入数据（上下各预留20%，用于水印/安全边界）
+        height, width = image.shape[0], image.shape[1]
+        top_skip = int(height * 0.20)
+        bottom_skip = int(height * 0.20)
+        start_row = top_skip
+        end_row = height - bottom_skip  # 不包含该行
+        available_height = max(0, end_row - start_row)
         
         # 检查数据大小是否超过可用图片容量
-        max_data_size = available_height * image.shape[1] * 3 // 8  # 每个像素3通道，每8位1字节
+        max_data_size = available_height * width * 3 // 8  # 每个像素3通道，每8位1字节
         if len(file_header) > max_data_size:
-            raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节（已排除水印区域）")
+            raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节（仅中间60%区域可写）")
         
-        print(f"嵌入文件数据: {len(file_header)} 字节到 {image.shape[0]}x{image.shape[1]} 图片（从第{watermark_height+1}行开始，水印区域高度: {watermark_height}像素）")
+        print(
+            f"嵌入文件数据: {len(file_header)} 字节到 {height}x{width} 图片（写入行: {start_row}~{end_row-1}，"
+            f"顶部预留≈20%，底部预留≈20%）"
+        )
         
         # 复制图片
         embedded_image = image.copy()
@@ -679,10 +691,10 @@ class TTImgUtils:
         length_binary = format(data_length, '032b')
         full_binary = length_binary + data_binary
         
-        # 嵌入数据到图片的LSB（从水印区域后开始，避开水印区域）
+        # 嵌入数据到图片的LSB（仅在中间可用区域写入）
         data_index = 0
-        for i in range(watermark_height, image.shape[0]):  # 从水印区域后开始
-            for j in range(image.shape[1]):
+        for i in range(start_row, end_row):
+            for j in range(width):
                 for k in range(3):  # RGB通道
                     if data_index < len(full_binary):
                         # 修改最低位

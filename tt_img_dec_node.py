@@ -183,7 +183,7 @@ class TTImgDecNode:
     
     def _extract_binary_from_lsb(self, image_array: np.ndarray) -> str:
         """
-        从图片的LSB中提取二进制数据（从水印区域后开始，避开水印区域）
+        从图片的LSB中提取二进制数据（仅在中间60%高度区域读取，避开上下各20%的水印/安全边界）
         
         Args:
             image_array: 图片数组
@@ -193,51 +193,47 @@ class TTImgDecNode:
         """
         try:
             height, width, channels = image_array.shape
-            watermark_height = int(height * 0.05)  # 水印区域高度为图片高度的5%
+            # 仅在中间60%高度读取
+            top_skip = int(height * 0.20)
+            bottom_skip = int(height * 0.20)
+            start_row = top_skip
+            end_row = height - bottom_skip  # 不包含
             binary_data = ""
             
-            # 从水印区域后开始，从每个像素的LSB中提取数据
-            for i in range(watermark_height, height):  # 从水印区域后开始
+            # 从可用区域开始，从每个像素的LSB中提取数据
+            for i in range(start_row, end_row):
                 for j in range(width):
                     for k in range(channels):
-                        # 提取最低位
                         bit = image_array[i, j, k] & 1
                         binary_data += str(bit)
                         
                         # 检查是否达到足够的数据长度
                         if len(binary_data) >= 32:  # 至少需要32位来读取长度
-                            # 尝试读取长度
                             length_binary = binary_data[:32]
                             try:
                                 data_length = int(length_binary, 2)
-                                
-                                # 计算总需要的位数：32位长度 + 数据长度*8位
                                 total_bits_needed = 32 + data_length * 8
                                 
                                 # 继续提取直到获得完整数据
                                 while len(binary_data) < total_bits_needed:
-                                    # 计算下一个像素位置
                                     current_pos = len(binary_data)
                                     pixel_index = current_pos // 3
                                     channel_index = current_pos % 3
                                     
-                                    # 计算在可用区域中的位置
-                                    available_pixels = (height - watermark_height) * width
+                                    available_pixels = (end_row - start_row) * width
                                     if pixel_index >= available_pixels:
                                         # 超出可用区域范围，停止提取
                                         break
                                     
-                                    # 计算实际的行列位置（加上水印区域偏移）
-                                    row = watermark_height + (pixel_index // width)
+                                    row = start_row + (pixel_index // width)
                                     col = pixel_index % width
                                     
-                                    if row < height and col < width:
+                                    if row < end_row and col < width:
                                         bit = image_array[row, col, channel_index] & 1
                                         binary_data += str(bit)
                                     else:
                                         break
                                 
-                                # 如果获得了足够的数据，返回
                                 if len(binary_data) >= total_bits_needed:
                                     return binary_data[:total_bits_needed]
                                     
