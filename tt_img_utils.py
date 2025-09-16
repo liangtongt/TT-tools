@@ -619,45 +619,30 @@ class TTImgUtils:
     def calculate_required_image_size(self, data: bytes) -> int:
         """计算存储数据所需的图片尺寸（优化存储效率，考虑水印区域）"""
         # 每个像素3个通道，每个通道1位
-        bits_needed = len(data) * 8
-        pixels_needed = bits_needed // 3
+        # 预留嵌入阶段的长度标记开销（前32位 = 4字节）
+        bytes_needed = len(data) + 4
+        bits_needed = bytes_needed * 8
+        required_pixels = int(np.ceil(bits_needed / 3.0))
 
-        # 仅在中间60%高度写入数据（上下各预留20%，用于水印/安全边界）
-        # 先估算一个合理的初始尺寸，预留20%额外冗余空间
-        estimated_size = int(np.ceil(np.sqrt(pixels_needed * 1.2)))
-        estimated_size = max(64, estimated_size)
-        estimated_size = ((estimated_size + 3) // 4) * 4  # 4的倍数对齐
-
-        # 估算阶段的可用高度（中间60%）
-        top_skip_est = int(estimated_size * 0.20)
-        bottom_skip_est = int(estimated_size * 0.20)
-        available_height_est = estimated_size - top_skip_est - bottom_skip_est
-
-        # 计算需要的总像素数（包含跳过的上下边界行）
-        # 为保证可用区能容纳数据，等价于：
-        # available_height_est * estimated_size >= pixels_needed
-        if available_height_est <= 0:
-            available_height_est = max(1, available_height_est)
-        total_pixels_needed = pixels_needed + (top_skip_est + bottom_skip_est) * estimated_size
-
-        # 初步计算边长
-        side_length = int(np.ceil(np.sqrt(total_pixels_needed)))
-        side_length = max(64, side_length)
+        # 仅在中间60%高度写入数据（上下各预留20%）
+        # 先用连续模型近似：usable_pixels ≈ 0.6 * S^2
+        # 得 S0 ≈ sqrt(required_pixels / 0.6)
+        s0 = int(np.ceil(np.sqrt(required_pixels / 0.6)))
+        side_length = max(64, s0)
+        # 4的倍数对齐
         side_length = ((side_length + 3) // 4) * 4
-
-        # 验证在中间60%区域内的容量是否足够
-        top_skip = int(side_length * 0.20)
-        bottom_skip = int(side_length * 0.20)
-        available_height = side_length - top_skip - bottom_skip
-        available_pixels = available_height * side_length
-        required_pixels = pixels_needed
-
-        if available_pixels < required_pixels:
-            # 若容量不足，再次放大边长（按所需可用像素反推）
-            needed_area = required_pixels + (top_skip + bottom_skip) * side_length
-            side_length = int(np.ceil(np.sqrt(max(needed_area, 1))))
-            side_length = ((max(64, side_length) + 3) // 4) * 4
-
+        
+        # 使用离散模型做严格校验：usable_pixels = (S - floor(0.2S) - floor(0.2S)) * S
+        # 若不足则按步进增长直至满足
+        while True:
+            top_skip = int(np.floor(side_length * 0.20))
+            bottom_skip = int(np.floor(side_length * 0.20))
+            available_height = side_length - top_skip - bottom_skip
+            available_pixels = max(0, available_height) * side_length
+            if available_pixels >= required_pixels:
+                break
+            side_length += 4  # 维持4对齐递增
+        
         return side_length
     
     def embed_file_data_in_image(self, image: np.ndarray, file_header: bytes) -> np.ndarray:
@@ -670,10 +655,16 @@ class TTImgUtils:
         end_row = height - bottom_skip  # 不包含该行
         available_height = max(0, end_row - start_row)
         
-        # 检查数据大小是否超过可用图片容量
+        # 检查数据大小是否超过可用图片容量；若不足则自动扩展画布并重嵌入
         max_data_size = available_height * width * 3 // 8  # 每个像素3通道，每8位1字节
         if len(file_header) > max_data_size:
-            raise ValueError(f"文件太大 ({len(file_header)} 字节)，当前图片最大支持 {max_data_size} 字节（仅中间60%区域可写）")
+            required_size = self.calculate_required_image_size(file_header)
+            print(
+                f"容量不足：数据 {len(file_header)}B > 可用 {max_data_size}B，"
+                f"自动扩展到 {required_size}x{required_size} 重新嵌入"
+            )
+            larger_image = self.create_storage_image(required_size)
+            return self.embed_file_data_in_image(larger_image, file_header)
         
         print(
             f"嵌入文件数据: {len(file_header)} 字节到 {height}x{width} 图片（写入行: {start_row}~{end_row-1}，"
