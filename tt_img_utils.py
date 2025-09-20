@@ -291,7 +291,6 @@ class TTImgUtils:
                 '-i', audio_path,  # 输入音频
                 '-c:v', 'copy',    # 视频编码器：直接复制
                 '-c:a', 'aac',     # 音频编码器：AAC
-                '-shortest',       # 以最短的流为准
                 '-y',              # 覆盖输出文件
                 output_path
             ]
