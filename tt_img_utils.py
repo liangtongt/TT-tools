@@ -341,8 +341,18 @@ class TTImgUtils:
         else:
             image_np = np.array(image)
         
-        # 使用ComfyUI标准转换：255. * image
-        i = 255. * image_np
+        # 检查数据范围并正确转换
+        if image_np.dtype == np.float32 or image_np.dtype == np.float64:
+            # 如果是浮点数，检查范围
+            if image_np.max() <= 1.0:
+                # 范围是0-1，需要乘以255
+                i = 255. * image_np
+            else:
+                # 范围已经是0-255，直接使用
+                i = image_np
+        else:
+            # 整数类型，假设已经是0-255范围
+            i = image_np.astype(np.float32)
         
         # 使用ComfyUI标准的clip和转换
         img_array = np.clip(i, 0, 255).astype(np.uint8)
