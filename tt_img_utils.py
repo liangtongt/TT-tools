@@ -303,6 +303,8 @@ class TTImgUtils:
                 'ffmpeg',
                 '-i', video_path,  # 输入视频
                 '-i', audio_path,  # 输入音频
+                '-map', '0:v:0',   # 映射第一个输入的视频流
+                '-map', '1:a:0',   # 映射第二个输入的音频流
                 '-c:v', 'copy',    # 视频编码器：直接复制
                 '-c:a', 'aac',     # 音频编码器：AAC
                 '-y',              # 覆盖输出文件
