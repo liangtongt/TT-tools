@@ -59,7 +59,20 @@ class TTImgUtils:
             temp_images = []
             for i, img in enumerate(images):
                 temp_img_path = os.path.join(temp_dir, f"frame_{i:06d}.jpg")
-                cv2.imwrite(temp_img_path, img)
+                
+                # 确保图片是RGB格式（FFmpeg期望RGB，不是BGR）
+                if len(img.shape) == 3 and img.shape[2] == 3:
+                    # 如果是RGB格式，转换为BGR供cv2.imwrite使用
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+                elif len(img.shape) == 3 and img.shape[2] == 4:
+                    # 如果是RGBA格式，先转RGB再转BGR
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+                    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+                else:
+                    # 灰度图转BGR
+                    img_bgr = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                
+                cv2.imwrite(temp_img_path, img_bgr)
                 temp_images.append(temp_img_path)
             
             # 使用FFmpeg创建视频（统一配置，添加颜色空间和优化参数）
@@ -71,6 +84,7 @@ class TTImgUtils:
                 '-c:v', 'libx264',  # 使用H.264编码器
                 '-pix_fmt', 'yuv420p',  # iPhone兼容的像素格式
                 '-crf', '19',  # 高质量压缩
+                '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
                 '-color_range', 'tv',  # 颜色范围
                 '-colorspace', 'bt709',  # 颜色空间
                 '-color_primaries', 'bt709',  # 颜色原色
