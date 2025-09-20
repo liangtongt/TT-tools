@@ -307,6 +307,7 @@ class TTImgUtils:
                 '-map', '1:a:0',   # 映射第二个输入的音频流
                 '-c:v', 'copy',    # 视频编码器：直接复制
                 '-c:a', 'aac',     # 音频编码器：AAC
+                '-shortest',       # 以最短的流为准（视频长度为准）
                 '-y',              # 覆盖输出文件
                 output_path
             ]
