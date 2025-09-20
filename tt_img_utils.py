@@ -314,122 +314,27 @@ class TTImgUtils:
             import shutil
             shutil.copy2(video_path, output_path)
     
-    def image_to_jpg(self, image: np.ndarray, quality: int = 95) -> str:
-        """将单张图片转换为JPG格式（手机兼容版本，无尺寸限制）"""
-        temp_path = os.path.join(self.temp_dir, "temp_image.jpg")
+    def image_to_png(self, image: np.ndarray, compress_level: int = 6) -> str:
+        """将单张图片转换为PNG格式（完全按照ComfyUI标准转换算法）"""
+        temp_path = os.path.join(self.temp_dir, "temp_image.png")
         
-        # 确保图片数据类型正确
-        if image.dtype != np.uint8:
-            # 如果是浮点数，假设范围是0-1
-            if image.dtype == np.float32 or image.dtype == np.float64:
-                image = (image * 255).astype(np.uint8)
-            else:
-                image = image.astype(np.uint8)
-        
-        # 确保像素值在有效范围内
-        image = np.clip(image, 0, 255)
-        
-        # 转换为PIL Image
-        if len(image.shape) == 3 and image.shape[2] == 3:
-            pil_image = Image.fromarray(image, 'RGB')
-        elif len(image.shape) == 3 and image.shape[2] == 4:
-            # RGBA转RGB
-            pil_image = Image.fromarray(image, 'RGBA').convert('RGB')
+        # 完全按照ComfyUI标准转换算法
+        # 确保图片是numpy数组
+        if hasattr(image, 'cpu'):
+            # 如果是torch张量，转换为numpy
+            image_np = image.cpu().numpy()
         else:
-            # 灰度图转RGB
-            pil_image = Image.fromarray(image, 'L').convert('RGB')
+            image_np = np.array(image)
         
-        # 保存为JPG，使用兼容性参数（无尺寸限制）
-        pil_image.save(temp_path, 'JPEG', 
-                      quality=quality,
-                      optimize=True,
-                      progressive=True,
-                      subsampling=0)  # 禁用子采样，提高兼容性
+        # 使用ComfyUI标准转换：255. * image
+        i = 255. * image_np
         
-        return temp_path
-    
-    def image_to_mobile_jpg(self, image: np.ndarray, quality: int = 90) -> str:
-        """专门为手机优化的JPG转换（最大兼容性）"""
-        temp_path = os.path.join(self.temp_dir, "mobile_image.jpg")
+        # 使用ComfyUI标准的clip和转换
+        img_array = np.clip(i, 0, 255).astype(np.uint8)
         
-        # 确保图片数据类型正确
-        if image.dtype != np.uint8:
-            if image.dtype == np.float32 or image.dtype == np.float64:
-                # 浮点数范围检查
-                if image.max() <= 1.0:
-                    image = (image * 255).astype(np.uint8)
-                else:
-                    image = image.astype(np.uint8)
-            else:
-                image = image.astype(np.uint8)
-        
-        # 严格限制像素值范围
-        image = np.clip(image, 0, 255)
-        
-        # 处理不同格式的图片
-        if len(image.shape) == 3 and image.shape[2] == 3:
-            # RGB图片
-            pil_image = Image.fromarray(image, 'RGB')
-        elif len(image.shape) == 3 and image.shape[2] == 4:
-            # RGBA图片，转换为RGB
-            pil_image = Image.fromarray(image, 'RGBA').convert('RGB')
-        elif len(image.shape) == 2:
-            # 灰度图片，转换为RGB
-            pil_image = Image.fromarray(image, 'L').convert('RGB')
-        else:
-            raise ValueError(f"不支持的图片格式: {image.shape}")
-        
-        # 确保图片尺寸合理（避免过大导致内存问题）
-        max_size = 4096
-        if pil_image.width > max_size or pil_image.height > max_size:
-            pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-        
-        # 保存为JPG，使用最兼容的参数
-        pil_image.save(temp_path, 'JPEG', 
-                      quality=quality,
-                      optimize=True,
-                      progressive=True,
-                      subsampling=0,  # 禁用色度子采样
-                      qtables='web_low')  # 使用web优化量化表
-        
-        return temp_path
-    
-    def image_to_ultra_compatible_jpg(self, image: np.ndarray) -> str:
-        """超兼容JPG转换（适用于所有设备）"""
-        temp_path = os.path.join(self.temp_dir, "ultra_compatible.jpg")
-        
-        # 数据类型转换
-        if image.dtype != np.uint8:
-            if image.dtype in [np.float32, np.float64]:
-                if image.max() <= 1.0:
-                    image = (image * 255).astype(np.uint8)
-                else:
-                    image = np.clip(image, 0, 255).astype(np.uint8)
-            else:
-                image = image.astype(np.uint8)
-        
-        # 像素值范围限制
-        image = np.clip(image, 0, 255)
-        
-        # 转换为PIL Image
-        if len(image.shape) == 3 and image.shape[2] == 3:
-            pil_image = Image.fromarray(image, 'RGB')
-        elif len(image.shape) == 3 and image.shape[2] == 4:
-            pil_image = Image.fromarray(image, 'RGBA').convert('RGB')
-        else:
-            pil_image = Image.fromarray(image, 'L').convert('RGB')
-        
-        # 限制最大尺寸（避免某些设备无法处理大图）
-        max_dimension = 2048
-        if pil_image.width > max_dimension or pil_image.height > max_dimension:
-            pil_image.thumbnail((max_dimension, max_dimension), Image.Resampling.LANCZOS)
-        
-        # 使用最保守的JPG参数
-        pil_image.save(temp_path, 'JPEG', 
-                      quality=85,  # 适中的质量
-                      optimize=True,
-                      progressive=False,  # 不使用渐进式，提高兼容性
-                      subsampling=0)  # 禁用子采样
+        # 按照ComfyUI标准，使用PIL Image保存
+        img = Image.fromarray(img_array)
+        img.save(temp_path, compress_level=compress_level, optimize=True)
         
         return temp_path
     

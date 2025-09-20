@@ -19,7 +19,7 @@ class TTImgEncNode:
             "required": {
                 "images": ("IMAGE",),
                 "fps": ("FLOAT", {"default": 16.0, "min": 0.1, "max": 120.0}),
-                "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
+                "compress_level": ("INT", {"default": 6, "min": 0, "max": 9}),
             },
             "optional": {
                 "audio": ("AUDIO",),  # 可选的音频输入
@@ -33,7 +33,7 @@ class TTImgEncNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, fps=16.0, quality=95, audio=None, usage_notes=None):
+    def process_images(self, images, fps=16.0, compress_level=6, audio=None, usage_notes=None):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片（优化版本）
         """
@@ -58,9 +58,9 @@ class TTImgEncNode:
                     temp_file = self.utils.images_to_mp4(numpy_images, fps)
                 file_extension = "mp4"
             else:
-                # 单张图片，转换为JPG（音频对单张图片无效）
-                temp_file = self.utils.image_to_jpg(numpy_images[0], quality)
-                file_extension = "jpg"
+                # 单张图片，转换为PNG（音频对单张图片无效）
+                temp_file = self.utils.image_to_png(numpy_images[0], compress_level)
+                file_extension = "png"
             
             # 优化：直接在内存中处理文件数据，避免重复读写
             output_image = self._create_storage_image_in_memory(temp_file, file_extension)

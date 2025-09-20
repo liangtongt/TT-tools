@@ -22,7 +22,7 @@ class TTImgEncPwNode:
                 "images": ("IMAGE",),
                 "password": ("STRING", {"default": "", "multiline": False}),
                 "fps": ("FLOAT", {"default": 16.0, "min": 0.1, "max": 120.0}),
-                "quality": ("INT", {"default": 95, "min": 1, "max": 100}),
+                "compress_level": ("INT", {"default": 6, "min": 0, "max": 9}),
             },
             "optional": {
                 "usage_notes": ("STRING", {"default": "利用图片的像素信息保存视频或图片，支持密码保护\n配合配套的本地解码软件，即可获取原文件\n即使被RH加了水印也能正常解码\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
@@ -35,7 +35,7 @@ class TTImgEncPwNode:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
-    def process_images(self, images, password="", fps=16.0, quality=95, usage_notes=None):
+    def process_images(self, images, password="", fps=16.0, compress_level=6, usage_notes=None):
         """
         处理输入的图片，根据数量自动转换格式并嵌入造点图片，支持密码保护
         """
@@ -68,9 +68,9 @@ class TTImgEncPwNode:
                 temp_file = self.utils.images_to_mp4(numpy_images, fps)
                 file_extension = "mp4"
             else:
-                # 单张图片，转换为JPG
-                temp_file = self.utils.image_to_jpg(numpy_images[0], quality)
-                file_extension = "jpg"
+                # 单张图片，转换为PNG
+                temp_file = self.utils.image_to_png(numpy_images[0], compress_level)
+                file_extension = "png"
             
             # 创建存储图片并嵌入文件（带密码保护）
             output_image = self._create_storage_image_with_file(temp_file, file_extension, password)
