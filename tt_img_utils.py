@@ -71,7 +71,6 @@ class TTImgUtils:
                 '-c:v', 'libx264',  # 使用H.264编码器
                 '-pix_fmt', 'yuv420p',  # iPhone兼容的像素格式
                 '-crf', '19',  # 高质量压缩
-                '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
                 '-color_range', 'tv',  # 颜色范围
                 '-colorspace', 'bt709',  # 颜色空间
                 '-color_primaries', 'bt709',  # 颜色原色
