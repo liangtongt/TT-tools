@@ -418,16 +418,24 @@ class TTImgDecNode:
             
             audio_data, sample_rate = sf.read(file_path)
             
-            # 确保是2D数组 (samples, channels)
+            # 确保音频数据是2D数组 (samples, channels)
             if len(audio_data.shape) == 1:
                 audio_data = audio_data.reshape(-1, 1)
             
             # 转换为torch张量
             audio_tensor = torch.from_numpy(audio_data.astype(np.float32))
             
+            # 转换为ComfyUI期望的3D格式 (batch_size, channels, samples)
+            # 从 (samples, channels) 转换为 (1, channels, samples)
+            if len(audio_tensor.shape) == 2:
+                audio_tensor = audio_tensor.transpose(0, 1).unsqueeze(0)
+            elif len(audio_tensor.shape) == 1:
+                # 如果是1D，转换为 (1, 1, samples)
+                audio_tensor = audio_tensor.unsqueeze(0).unsqueeze(0)
+            
             # 返回ComfyUI音频格式
             return {
-                'samples': audio_tensor,
+                'waveform': audio_tensor,
                 'sample_rate': sample_rate
             }
             
