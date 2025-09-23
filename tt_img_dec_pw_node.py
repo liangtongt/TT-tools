@@ -48,12 +48,12 @@ class TTImgDecPwNode:
                 "output_filename": ("STRING", {"default": "tt_img_dec_pw_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "通用解码节点：支持带密码保护和无密码的图片\n自动检测图片类型，无需手动选择\n如果图片有密码保护，需要输入正确密码\n如果图片无密码保护，密码字段可留空\n自动保存到ComfyUI默认output目录\n支持直接输出解码后的图片和音频\n图片格式：PNG、JPG、JPEG、BMP、TIFF、WEBP\n视频格式：MP4、AVI、MOV、MKV、WEBM（输出第一帧+音频）\n音频格式：WAV、MP3、AAC、FLAC、OGG、M4A\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "通用解码节点：支持带密码保护和无密码的图片\n自动检测图片类型，无需手动选择\n如果图片有密码保护，需要输入正确密码\n如果图片无密码保护，密码字段可留空\n自动保存到ComfyUI默认output目录\n支持直接输出解码后的图片和音频\n图片格式：PNG、JPG、JPEG、BMP、TIFF、WEBP\n视频格式：MP4、AVI、MOV、MKV、WEBM（输出所有帧+音频+FPS）\n音频格式：WAV、MP3、AAC、FLAC、OGG、M4A\n输出：IMAGE(所有帧)、AUDIO、文件路径、FPS\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
-    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING")  # 图片、音频、文件路径输出
-    RETURN_NAMES = ("image", "audio", "file_path")
+    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING", "FLOAT")  # 图片、音频、文件路径、FPS输出
+    RETURN_NAMES = ("image", "audio", "file_path", "fps")
     FUNCTION = "extract_file_from_image"
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
@@ -85,7 +85,7 @@ class TTImgDecPwNode:
             file_data, file_extension = self._extract_file_data_from_image(img_np, password)
             
             if file_data is None:
-                return (None, None, "")
+                return (None, None, "", 0.0)
             
             # 确定输出路径
             if not output_filename:
@@ -112,13 +112,13 @@ class TTImgDecPwNode:
                 f.write(file_data)
             
             # 处理解码后的文件，转换为ComfyUI格式
-            output_image, output_audio = self._process_decoded_file(output_path, file_extension)
+            output_image, output_audio, fps = self._process_decoded_file(output_path, file_extension)
             
-            return (output_image, output_audio, output_path)
+            return (output_image, output_audio, output_path, fps)
             
         except Exception as e:
             print(f"解码失败: {e}")
-            return (None, None, "")
+            return (None, None, "", 0.0)
     
     def _extract_file_data_from_image(self, image_array: np.ndarray, password: str = "") -> tuple:
         """
@@ -472,7 +472,7 @@ class TTImgDecPwNode:
         except Exception as e:
             return b''
     
-    def _process_decoded_file(self, file_path: str, file_extension: str) -> Tuple[Optional[torch.Tensor], Optional[dict]]:
+    def _process_decoded_file(self, file_path: str, file_extension: str) -> Tuple[Optional[torch.Tensor], Optional[dict], float]:
         """
         处理解码后的文件，转换为ComfyUI兼容的格式
         
@@ -481,12 +481,13 @@ class TTImgDecPwNode:
             file_extension: 文件扩展名
         
         Returns:
-            tuple: (image_tensor, audio_dict) 或 (None, None)
+            tuple: (image_tensor, audio_dict, fps) 或 (None, None, 0.0)
         """
         try:
             # 图片文件处理
             if file_extension.lower() in ['png', 'jpg', 'jpeg', 'bmp', 'tiff', 'webp']:
-                return self._process_image_file(file_path), None
+                image_result = self._process_image_file(file_path)
+                return image_result, None, 0.0
             
             # 视频文件处理
             elif file_extension.lower() in ['mp4', 'avi', 'mov', 'mkv', 'webm']:
@@ -494,16 +495,17 @@ class TTImgDecPwNode:
             
             # 音频文件处理
             elif file_extension.lower() in ['wav', 'mp3', 'aac', 'flac', 'ogg', 'm4a']:
-                return None, self._process_audio_file(file_path)
+                audio_result = self._process_audio_file(file_path)
+                return None, audio_result, 0.0
             
             # 其他文件类型，返回None
             else:
                 print(f"不支持的文件类型: {file_extension}")
-                return None, None
+                return None, None, 0.0
                 
         except Exception as e:
             print(f"处理解码文件失败: {e}")
-            return None, None
+            return None, None, 0.0
     
     def _process_image_file(self, file_path: str) -> Optional[torch.Tensor]:
         """
@@ -535,15 +537,15 @@ class TTImgDecPwNode:
             print(f"处理图片文件失败: {e}")
             return None
     
-    def _process_video_file(self, file_path: str) -> Tuple[Optional[torch.Tensor], Optional[dict]]:
+    def _process_video_file(self, file_path: str) -> Tuple[Optional[torch.Tensor], Optional[dict], float]:
         """
-        处理视频文件，提取第一帧作为图片，提取音频
+        处理视频文件，提取所有帧作为图片序列，提取音频和FPS
         
         Args:
             file_path: 视频文件路径
         
         Returns:
-            tuple: (image_tensor, audio_dict)
+            tuple: (image_tensor, audio_dict, fps)
         """
         try:
             # 使用OpenCV读取视频
@@ -551,31 +553,45 @@ class TTImgDecPwNode:
             
             if not cap.isOpened():
                 print(f"无法打开视频文件: {file_path}")
-                return None, None
+                return None, None, 0.0
             
-            # 读取第一帧
-            ret, frame = cap.read()
+            # 获取视频信息
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            
+            print(f"视频信息: FPS={fps}, 总帧数={frame_count}")
+            
+            # 读取所有帧
+            frames = []
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # 转换BGR到RGB
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(frame_rgb)
+            
             cap.release()
             
-            if not ret:
+            if not frames:
                 print("无法读取视频帧")
-                return None, None
+                return None, None, 0.0
             
-            # 转换BGR到RGB
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # 将所有帧合并为一个张量 (batch, height, width, channels)
+            frames_array = np.array(frames).astype(np.float32) / 255.0
+            img_tensor = torch.from_numpy(frames_array)
             
-            # 转换为ComfyUI格式
-            img_array = frame_rgb.astype(np.float32) / 255.0
-            img_tensor = torch.from_numpy(img_array).unsqueeze(0)
+            print(f"成功读取 {len(frames)} 帧，形状: {img_tensor.shape}")
             
             # 提取音频
             audio_dict = self._extract_audio_from_video(file_path)
             
-            return img_tensor, audio_dict
+            return img_tensor, audio_dict, fps
             
         except Exception as e:
             print(f"处理视频文件失败: {e}")
-            return None, None
+            return None, None, 0.0
     
     def _process_audio_file(self, file_path: str) -> Optional[dict]:
         """
