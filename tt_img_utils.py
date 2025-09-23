@@ -5,6 +5,7 @@ import cv2
 from typing import List
 import subprocess
 import tempfile
+import uuid
 
 
 class TTImgUtils:
@@ -17,7 +18,8 @@ class TTImgUtils:
     
     def images_to_mp4(self, images: List[np.ndarray], fps: float) -> str:
         """将多张图片转换为MP4视频（使用FFmpeg）"""
-        temp_path = os.path.join(self.temp_dir, "temp_video.mp4")
+        random_suffix = str(uuid.uuid4())[:8]
+        temp_path = os.path.join(self.temp_dir, f"temp_video_{random_suffix}.mp4")
         
         # 获取图片尺寸
         height, width = images[0].shape[:2]
@@ -52,7 +54,8 @@ class TTImgUtils:
         """使用FFmpeg直接创建视频（备用方法）"""
         try:
             # 创建临时目录存储图片
-            temp_dir = os.path.join(self.temp_dir, "ffmpeg_temp")
+            random_suffix = str(uuid.uuid4())[:8]
+            temp_dir = os.path.join(self.temp_dir, f"ffmpeg_temp_{random_suffix}")
             os.makedirs(temp_dir, exist_ok=True)
             
             # 保存所有图片为临时文件
@@ -124,7 +127,8 @@ class TTImgUtils:
             return video_path
         
         # 创建带音频的MP4
-        audio_video_path = os.path.join(self.temp_dir, "temp_video_with_audio.mp4")
+        random_suffix = str(uuid.uuid4())[:8]
+        audio_video_path = os.path.join(self.temp_dir, f"temp_video_with_audio_{random_suffix}.mp4")
         
         try:
             # 处理音频数据
@@ -150,7 +154,8 @@ class TTImgUtils:
     
     def _process_audio_input(self, audio) -> str:
         """处理音频输入，返回临时音频文件路径"""
-        audio_path = os.path.join(self.temp_dir, "temp_audio.wav")
+        random_suffix = str(uuid.uuid4())[:8]
+        audio_path = os.path.join(self.temp_dir, f"temp_audio_{random_suffix}.wav")
         
         # 如果audio是文件路径
         if isinstance(audio, str) and os.path.exists(audio):
@@ -331,7 +336,8 @@ class TTImgUtils:
     
     def image_to_png(self, image: np.ndarray, compress_level: int = 6) -> str:
         """将单张图片转换为PNG格式（完全按照ComfyUI标准转换算法）"""
-        temp_path = os.path.join(self.temp_dir, "temp_image.png")
+        random_suffix = str(uuid.uuid4())[:8]
+        temp_path = os.path.join(self.temp_dir, f"temp_image_{random_suffix}.png")
         
         # 完全按照ComfyUI标准转换算法
         # 确保图片是numpy数组
