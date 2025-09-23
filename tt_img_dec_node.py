@@ -2,7 +2,10 @@ import os
 from PIL import Image
 import numpy as np
 import torch
-from typing import List
+from typing import List, Tuple, Optional
+import cv2
+import tempfile
+import uuid
 
 class TTImgDecNode:
     def __init__(self):
@@ -43,18 +46,19 @@ class TTImgDecNode:
                 "output_filename": ("STRING", {"default": "tt_img_dec_file", "multiline": False}),
             },
             "optional": {
-                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n自动保存到ComfyUI默认output目录\n运行完成后在命令行显示文件路径\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "用于解码 tt img enc 加密的图片\n自动保存到ComfyUI默认output目录\n支持直接输出解码后的图片和音频\n图片格式：PNG、JPG、JPEG、BMP、TIFF、WEBP\n视频格式：MP4、AVI、MOV、MKV、WEBM（输出第一帧+音频）\n音频格式：WAV、MP3、AAC、FLAC、OGG、M4A\n兼容被RH添加水印的图片\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
     
-    RETURN_TYPES = ()  # 无输出
+    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING")  # 图片、音频、文件路径输出
+    RETURN_NAMES = ("image", "audio", "file_path")
     FUNCTION = "extract_file_from_image"
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
     
     def extract_file_from_image(self, image, output_filename="tt_img_dec_file", usage_notes=None):
         """
-        从造点图片中提取隐藏文件
+        从造点图片中提取隐藏文件，并输出为ComfyUI兼容的格式
         """
         try:
             # 将ComfyUI的torch张量转换为numpy数组
@@ -78,7 +82,7 @@ class TTImgDecNode:
             file_data, file_extension = self._extract_file_data_from_image(img_np)
             
             if file_data is None:
-                return ()
+                return (None, None, "")
             
             # 确定输出路径
             if not output_filename:
@@ -104,10 +108,14 @@ class TTImgDecNode:
             with open(output_path, 'wb') as f:
                 f.write(file_data)
             
-            return ()
+            # 处理解码后的文件，转换为ComfyUI格式
+            output_image, output_audio = self._process_decoded_file(output_path, file_extension)
+            
+            return (output_image, output_audio, output_path)
             
         except Exception as e:
-            return ()
+            print(f"解码失败: {e}")
+            return (None, None, "")
     
     def _extract_file_data_from_image(self, image_array: np.ndarray) -> tuple:
         """
@@ -272,5 +280,193 @@ class TTImgDecNode:
             
         except Exception as e:
             return b''
+    
+    def _process_decoded_file(self, file_path: str, file_extension: str) -> Tuple[Optional[torch.Tensor], Optional[dict]]:
+        """
+        处理解码后的文件，转换为ComfyUI兼容的格式
+        
+        Args:
+            file_path: 解码后的文件路径
+            file_extension: 文件扩展名
+        
+        Returns:
+            tuple: (image_tensor, audio_dict) 或 (None, None)
+        """
+        try:
+            # 图片文件处理
+            if file_extension.lower() in ['png', 'jpg', 'jpeg', 'bmp', 'tiff', 'webp']:
+                return self._process_image_file(file_path), None
+            
+            # 视频文件处理
+            elif file_extension.lower() in ['mp4', 'avi', 'mov', 'mkv', 'webm']:
+                return self._process_video_file(file_path)
+            
+            # 音频文件处理
+            elif file_extension.lower() in ['wav', 'mp3', 'aac', 'flac', 'ogg', 'm4a']:
+                return None, self._process_audio_file(file_path)
+            
+            # 其他文件类型，返回None
+            else:
+                print(f"不支持的文件类型: {file_extension}")
+                return None, None
+                
+        except Exception as e:
+            print(f"处理解码文件失败: {e}")
+            return None, None
+    
+    def _process_image_file(self, file_path: str) -> Optional[torch.Tensor]:
+        """
+        处理图片文件，转换为ComfyUI的IMAGE格式
+        
+        Args:
+            file_path: 图片文件路径
+        
+        Returns:
+            torch.Tensor: ComfyUI格式的图片张量
+        """
+        try:
+            # 使用PIL读取图片
+            image = Image.open(file_path)
+            
+            # 转换为RGB格式
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+            
+            # 转换为numpy数组
+            img_array = np.array(image).astype(np.float32) / 255.0
+            
+            # 添加batch维度并转换为torch张量
+            img_tensor = torch.from_numpy(img_array).unsqueeze(0)
+            
+            return img_tensor
+            
+        except Exception as e:
+            print(f"处理图片文件失败: {e}")
+            return None
+    
+    def _process_video_file(self, file_path: str) -> Tuple[Optional[torch.Tensor], Optional[dict]]:
+        """
+        处理视频文件，提取第一帧作为图片，提取音频
+        
+        Args:
+            file_path: 视频文件路径
+        
+        Returns:
+            tuple: (image_tensor, audio_dict)
+        """
+        try:
+            # 使用OpenCV读取视频
+            cap = cv2.VideoCapture(file_path)
+            
+            if not cap.isOpened():
+                print(f"无法打开视频文件: {file_path}")
+                return None, None
+            
+            # 读取第一帧
+            ret, frame = cap.read()
+            cap.release()
+            
+            if not ret:
+                print("无法读取视频帧")
+                return None, None
+            
+            # 转换BGR到RGB
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # 转换为ComfyUI格式
+            img_array = frame_rgb.astype(np.float32) / 255.0
+            img_tensor = torch.from_numpy(img_array).unsqueeze(0)
+            
+            # 提取音频
+            audio_dict = self._extract_audio_from_video(file_path)
+            
+            return img_tensor, audio_dict
+            
+        except Exception as e:
+            print(f"处理视频文件失败: {e}")
+            return None, None
+    
+    def _process_audio_file(self, file_path: str) -> Optional[dict]:
+        """
+        处理音频文件，转换为ComfyUI的AUDIO格式
+        
+        Args:
+            file_path: 音频文件路径
+        
+        Returns:
+            dict: ComfyUI格式的音频数据
+        """
+        try:
+            # 使用soundfile读取音频
+            import soundfile as sf
+            
+            audio_data, sample_rate = sf.read(file_path)
+            
+            # 确保是2D数组 (samples, channels)
+            if len(audio_data.shape) == 1:
+                audio_data = audio_data.reshape(-1, 1)
+            
+            # 转换为torch张量
+            audio_tensor = torch.from_numpy(audio_data.astype(np.float32))
+            
+            # 返回ComfyUI音频格式
+            return {
+                'samples': audio_tensor,
+                'sample_rate': sample_rate
+            }
+            
+        except Exception as e:
+            print(f"处理音频文件失败: {e}")
+            return None
+    
+    def _extract_audio_from_video(self, video_path: str) -> Optional[dict]:
+        """
+        从视频文件中提取音频
+        
+        Args:
+            video_path: 视频文件路径
+        
+        Returns:
+            dict: ComfyUI格式的音频数据
+        """
+        try:
+            # 使用FFmpeg提取音频
+            import subprocess
+            import tempfile
+            
+            # 创建临时音频文件
+            temp_audio = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+            temp_audio_path = temp_audio.name
+            temp_audio.close()
+            
+            # 使用FFmpeg提取音频
+            cmd = [
+                'ffmpeg',
+                '-i', video_path,
+                '-vn',  # 不处理视频
+                '-acodec', 'pcm_s16le',  # 音频编码
+                '-ar', '44100',  # 采样率
+                '-ac', '2',  # 声道数
+                '-y',  # 覆盖输出文件
+                temp_audio_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"FFmpeg提取音频失败: {result.stderr}")
+                return None
+            
+            # 读取提取的音频
+            audio_dict = self._process_audio_file(temp_audio_path)
+            
+            # 清理临时文件
+            os.unlink(temp_audio_path)
+            
+            return audio_dict
+            
+        except Exception as e:
+            print(f"从视频提取音频失败: {e}")
+            return None
 
 # 节点类定义完成
