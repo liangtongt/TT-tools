@@ -28,7 +28,7 @@ class TTImgEncV2Node:
             },
             "optional": {
                 "audio": ("AUDIO",),
-                "usage_notes": ("STRING", {"default": "V2：更高的存储效率和编解码速度\nvideo_compression(0-51): 视频压缩率，越低质量越高，体积越大，建议默认\npng_compression(0-9): PNG压缩率，越低质量越高，体积越大，建议默认\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "V2：更高的存储效率和编解码速度\nvideo_compression(0-51): 视频压缩率，越低质量越高，体积越大，建议默认\npng_compression(0-9): \nskip_watermark_area:是否跳过水印区域，不跳过可以进一步提升存储效率，不确定生成的图片是否会带水印，建议开启\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
 
@@ -37,7 +37,7 @@ class TTImgEncV2Node:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
 
-    def process_images(self, images, fps=16.0, compress_level=6, skip_watermark_area=True, video_compression=19, audio=None, usage_notes=None):
+    def process_images(self, images, fps=16.0, png_compression=6, skip_watermark_area=True, video_compression=19, audio=None, usage_notes=None):
         """
         将输入图片打包为文件（单图->PNG，多图->MP4[可选音频]），并以更高位宽的隐写方式写入到存储图片中。
         与V1不同：
@@ -61,7 +61,7 @@ class TTImgEncV2Node:
                     temp_file = self.utils.images_to_mp4(numpy_images, fps, video_compression)
                 file_extension = "mp4"
             else:
-                temp_file = self.utils.image_to_png(numpy_images[0], compress_level)
+                temp_file = self.utils.image_to_png(numpy_images[0], png_compression)
                 file_extension = "png"
 
             output_image = self._create_storage_image_in_memory_v2(temp_file, file_extension, bits_per_channel, skip_watermark_area)
