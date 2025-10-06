@@ -19,13 +19,16 @@ class TTImgEncV2Node:
             "required": {
                 "images": ("IMAGE",),
                 "fps": ("FLOAT", {"default": 16.0, "min": 0.1, "max": 120.0}),
-                "compress_level": ("INT", {"default": 6, "min": 0, "max": 9}),
+                # 视频压缩率（FFmpeg CRF值，18=高质量，23=默认，28=低质量）
+                "video_compression": ("INT", {"default": 19, "min": 0, "max": 51}),
+                "png_compression": ("INT", {"default": 6, "min": 0, "max": 9}),
                 # 跳过上下各20%区域（避免水印/边界干扰），仅使用中间60%写入
                 "skip_watermark_area": ("BOOLEAN", {"default": True}),
+                
             },
             "optional": {
                 "audio": ("AUDIO",),
-                "usage_notes": ("STRING", {"default": "V2：自动使用每通道8位（最大容量），可选跳过上下20%（中间60%）水印安全区。教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "V2：更高的存储效率和编解码速度\nvideo_compression(0-51): 视频压缩率，越低质量越高，体积越大，建议默认\npng_compression(0-9): PNG压缩率，越低质量越高，体积越大，建议默认\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
 
@@ -34,7 +37,7 @@ class TTImgEncV2Node:
     CATEGORY = "TT Tools"
     OUTPUT_NODE = True
 
-    def process_images(self, images, fps=16.0, compress_level=6, skip_watermark_area=True, audio=None, usage_notes=None):
+    def process_images(self, images, fps=16.0, compress_level=6, skip_watermark_area=True, video_compression=19, audio=None, usage_notes=None):
         """
         将输入图片打包为文件（单图->PNG，多图->MP4[可选音频]），并以更高位宽的隐写方式写入到存储图片中。
         与V1不同：
@@ -53,9 +56,9 @@ class TTImgEncV2Node:
 
             if num_images > 1:
                 if audio is not None:
-                    temp_file = self.utils.images_to_mp4_with_audio(numpy_images, fps, audio)
+                    temp_file = self.utils.images_to_mp4_with_audio(numpy_images, fps, audio, video_compression)
                 else:
-                    temp_file = self.utils.images_to_mp4(numpy_images, fps)
+                    temp_file = self.utils.images_to_mp4(numpy_images, fps, video_compression)
                 file_extension = "mp4"
             else:
                 temp_file = self.utils.image_to_png(numpy_images[0], compress_level)
@@ -76,6 +79,7 @@ class TTImgEncV2Node:
                 print(f"文件类型: {file_extension}")
                 print(f"每通道位数: {bits_per_channel}")
                 print(f"跳过上下20%: {bool(skip_watermark_area)}")
+                print(f"视频压缩率(CRF): {video_compression}")
 
             return (output_tensor,)
 

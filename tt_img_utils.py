@@ -16,7 +16,7 @@ class TTImgUtils:
         # 创建必要的目录
         os.makedirs(self.temp_dir, exist_ok=True)
     
-    def images_to_mp4(self, images: List[np.ndarray], fps: float) -> str:
+    def images_to_mp4(self, images: List[np.ndarray], fps: float, crf: int = 19) -> str:
         """将多张图片转换为MP4视频（使用FFmpeg）"""
         random_suffix = str(uuid.uuid4())[:8]
         temp_path = os.path.join(self.temp_dir, f"temp_video_{random_suffix}.mp4")
@@ -34,7 +34,7 @@ class TTImgUtils:
         resized_images = self._batch_resize_images(images, width, height)
         
         # 直接使用FFmpeg创建视频
-        return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height)
+        return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
     
     def _batch_resize_images(self, images: List[np.ndarray], target_width: int, target_height: int) -> List[np.ndarray]:
         """批量调整图片尺寸，优化性能"""
@@ -50,7 +50,7 @@ class TTImgUtils:
         
         return resized_images
     
-    def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int) -> str:
+    def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
         """使用FFmpeg直接创建视频（备用方法）"""
         try:
             # 创建临时目录存储图片
@@ -86,7 +86,7 @@ class TTImgUtils:
                 '-i', os.path.join(temp_dir, 'frame_%06d.jpg'),
                 '-c:v', 'libx264',  # 使用H.264编码器
                 '-pix_fmt', 'yuv420p',  # iPhone兼容的像素格式
-                '-crf', '19',  # 高质量压缩
+                '-crf', str(crf),  # 可配置压缩率
                 '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
                 '-color_range', 'tv',  # 颜色范围
                 '-colorspace', 'bt709',  # 颜色空间
@@ -117,10 +117,10 @@ class TTImgUtils:
             print(f"FFmpeg创建视频异常: {e}")
             raise RuntimeError(f"视频创建失败: {e}")
     
-    def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio) -> str:
+    def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio, crf: int = 19) -> str:
         """将多张图片转换为带音频的MP4视频（iPhone兼容版本）"""
         # 先生成无音频的MP4
-        video_path = self.images_to_mp4(images, fps)
+        video_path = self.images_to_mp4(images, fps, crf)
         
         # 如果没有音频，直接返回视频
         if audio is None:
