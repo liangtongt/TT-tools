@@ -135,11 +135,12 @@ class TTImgEncV2Node:
 
         file_header = self._create_file_header(file_data, file_extension, skip_watermark_area)
 
-        # 计算最小尺寸（考虑整幅或中间60%可用区域）
+        # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGBA 4通道
         side = self._calculate_required_image_size_v2(file_header, bits_per_channel, skip_watermark_area)
 
-        # 生成纯色画布（中性灰），便于多位隐写而不过度可见
-        image = np.ones((side, side, 3), dtype=np.uint8) * 128
+        # 生成纯色画布 RGBA（中性灰，Alpha初始设为不透明255）
+        image = np.ones((side, side, 4), dtype=np.uint8) * 128
+        image[:, :, 3] = 255
 
         # 嵌入数据
         embedded = self._embed_data_multi_bit(image, file_header, bits_per_channel, skip_watermark_area)
@@ -150,8 +151,8 @@ class TTImgEncV2Node:
         bytes_needed = len(data) + 4
         bits_needed = bytes_needed * 8
 
-        # 每像素可用位数：3 通道 * bits_per_channel
-        capacity_per_pixel = 3 * bits_per_channel
+        # 每像素可用位数：4 通道(RGBA) * bits_per_channel
+        capacity_per_pixel = 4 * bits_per_channel
 
         if skip_watermark_area:
             # 连续近似：usable ≈ 0.6 * S^2
@@ -185,17 +186,18 @@ class TTImgEncV2Node:
         data_binary = ''.join(format(byte, '08b') for byte in file_header)
         full_binary = length_binary + data_binary
 
+        channels = embedded.shape[2]
         if skip_watermark_area:
             top_skip = int(np.floor(height * 0.20))
             bottom_skip = int(np.floor(height * 0.20))
             start_row = top_skip
             end_row = height - bottom_skip
             usable_rows = max(0, end_row - start_row)
-            total_capacity_bits = usable_rows * width * 3 * bits_per_channel
+            total_capacity_bits = usable_rows * width * channels * bits_per_channel
         else:
             start_row = 0
             end_row = height
-            total_capacity_bits = height * width * 3 * bits_per_channel
+            total_capacity_bits = height * width * channels * bits_per_channel
         if len(full_binary) > total_capacity_bits:
             # 理论上不会发生，因为尺寸已按容量计算
             raise ValueError("容量计算不足，无法写入全部数据")
@@ -206,7 +208,7 @@ class TTImgEncV2Node:
 
         for i in range(start_row, end_row):
             for j in range(width):
-                for c in range(3):
+                for c in range(channels):
                     if bit_index >= len(full_binary):
                         break
                     # 取接下来 bits_per_channel 位，不足则右侧用0补齐
@@ -231,14 +233,14 @@ class TTImgEncV2Node:
             rng = np.random.default_rng()
             # 顶部区域 [0, start_row)
             if start_row > 0:
-                # 生成随机低位值，形状: (start_row, width, 3)
-                noise_top = rng.integers(0, mask + 1, size=(start_row, width, 3), dtype=np.uint8)
+                # 生成随机低位值，形状: (start_row, width, channels)
+                noise_top = rng.integers(0, mask + 1, size=(start_row, width, channels), dtype=np.uint8)
                 # 应用到低位
                 embedded[:start_row, :, :] = (embedded[:start_row, :, :] & clear_mask) | noise_top
             # 底部区域 [end_row, height)
             if end_row < height:
                 rows_bottom = height - end_row
-                noise_bottom = rng.integers(0, mask + 1, size=(rows_bottom, width, 3), dtype=np.uint8)
+                noise_bottom = rng.integers(0, mask + 1, size=(rows_bottom, width, channels), dtype=np.uint8)
                 embedded[end_row:, :, :] = (embedded[end_row:, :, :] & clear_mask) | noise_bottom
 
         return embedded
