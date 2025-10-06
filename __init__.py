@@ -15,10 +15,12 @@ from .tt_img_brightness_contrast_node import TTImgBrightnessContrastNode
 from .tt_img_rgb_adjust_node import TTImgRGBAdjustNode
 from .tt_img_hsv_adjust_node import TTImgHSVAdjustNode
 from .tt_img_lut_node import TTImgLUTNode
+from .tt_img_enc_v2_node import TTImgEncV2Node
 
 # 注册节点类
 NODE_CLASS_MAPPINGS = {
     "TT_img_enc": TTImgEncNode,
+    "TT_img_enc_v2": TTImgEncV2Node,
     "TT_img_dec": TTImgDecNode,
     "TT_img_enc_pw": TTImgEncPwNode,
     "TT_img_dec_pw": TTImgDecPwNode,
@@ -34,6 +36,7 @@ NODE_CLASS_MAPPINGS = {
 # 注册节点显示名称
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_img_enc": "TT img enc",
+    "TT_img_enc_v2": "TT img enc V2",
     "TT_img_dec": "TT img dec",
     "TT_img_enc_pw": "TT img enc pw",
     "TT_img_dec_pw": "TT img dec pw",
@@ -52,6 +55,7 @@ __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
 # 节点功能说明
 NODE_DESCRIPTIONS = {
     "TT_img_enc": "将图片/视频转换为造点图片，隐藏文件数据",
+    "TT_img_enc_v2": "V2：支持每通道多位LSB并可跳过上下20%，更高容量",
     "TT_img_dec": "从造点图片中提取隐藏的文件",
     "TT_img_enc_pw": "将图片/视频转换为带密码保护的造点图片",
     "TT_img_dec_pw": "通用解码节点：支持带密码保护和无密码的图片，自动检测类型",
