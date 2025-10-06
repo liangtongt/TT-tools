@@ -135,12 +135,11 @@ class TTImgEncV2Node:
 
         file_header = self._create_file_header(file_data, file_extension, skip_watermark_area)
 
-        # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGBA 4通道
+        # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGB 3通道
         side = self._calculate_required_image_size_v2(file_header, bits_per_channel, skip_watermark_area)
 
-        # 生成纯色画布 RGBA（中性灰，Alpha初始设为不透明255）
-        image = np.ones((side, side, 4), dtype=np.uint8) * 128
-        image[:, :, 3] = 255
+        # 生成纯色画布 RGB（中性灰）
+        image = np.ones((side, side, 3), dtype=np.uint8) * 128
 
         # 嵌入数据
         embedded = self._embed_data_multi_bit(image, file_header, bits_per_channel, skip_watermark_area)
@@ -151,8 +150,8 @@ class TTImgEncV2Node:
         bytes_needed = len(data) + 4
         bits_needed = bytes_needed * 8
 
-        # 每像素可用位数：4 通道(RGBA) * bits_per_channel
-        capacity_per_pixel = 4 * bits_per_channel
+        # 每像素可用位数：3 通道(RGB) * bits_per_channel
+        capacity_per_pixel = 3 * bits_per_channel
 
         if skip_watermark_area:
             # 连续近似：usable ≈ 0.6 * S^2
