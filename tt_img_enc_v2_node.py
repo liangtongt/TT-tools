@@ -239,7 +239,7 @@ class TTImgEncV2Node:
     def _create_file_header(self, file_data: bytes, file_extension: str, skip_watermark_area: bool) -> bytes:
         """
         V2 文件头（嵌入在32位总长度前缀之后），增加稳健定位：
-        [MAGIC(4)='TTv2'][HDR_LEN(2)][CRC16(2)][version(1)][flags(1)][ext_len(1)][ext][data_len(4)][data]
+        [MAGIC(4)='TTv2'][HDR_LEN(4)][CRC16(2)][version(1)][flags(1)][ext_len(1)][ext][data_len(4)][data]
         - version: 2
         - flags: bit0=skip_watermark_area
         - CRC16 计算范围：从 version 起，到 data 末尾（不含 MAGIC/HDR_LEN/CRC 本身）
@@ -266,7 +266,7 @@ class TTImgEncV2Node:
 
         payload = bytearray()
         payload.extend(b'TTv2')                # MAGIC
-        payload.extend(len(inner).to_bytes(2, 'big'))  # HDR_LEN
+        payload.extend(len(inner).to_bytes(4, 'big'))  # HDR_LEN (uint32)
         payload.extend(crc.to_bytes(2, 'big'))         # CRC16
         payload.extend(inner)                          # 实际头+数据
         return bytes(payload)
