@@ -28,7 +28,7 @@ class TTImgEncV2Node:
             },
             "optional": {
                 "audio": ("AUDIO",),
-                "usage_notes": ("STRING", {"default": "V2：更高的存储效率和编解码速度\nvideo_compression(0-51): 视频压缩率，越低质量越高，体积越大，建议默认\npng_compression(0-9): \nskip_watermark_area:是否跳过水印区域，不跳过可以进一步提升存储效率，不确定生成的图片是否会带水印，建议开启\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
+                "usage_notes": ("STRING", {"default": "V2：更高的存储效率和编解码速度\nvideo_compression(0-51): 视频压缩率，越低质量越高，体积越大，建议默认\npng_compression(0-9):图片压缩率，越低质量越高，体积越大，建议默认 \nskip_watermark_area:是否跳过水印区域，不跳过可以进一步提升存储效率，不确定生成的图片是否会带水印，建议开启\n教程：https://b23.tv/RbvaMeW\nB站：我是小斯呀", "multiline": True}),
             }
         }
 
