@@ -154,14 +154,14 @@ class TTImgEncV2Node:
         capacity_per_pixel = 3 * bits_per_channel
 
         if skip_watermark_area:
-            # 连续近似：usable ≈ 0.6 * S^2
-            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.6))))
+            # 连续近似：仅跳过顶部5%，usable ≈ 0.95 * S^2
+            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.95))))
             side_length = max(64, side0)
             side_length = ((side_length + 3) // 4) * 4
             # 离散校验
             while True:
-                top_skip = int(np.floor(side_length * 0.20))
-                bottom_skip = int(np.floor(side_length * 0.20))
+                top_skip = int(np.floor(side_length * 0.05))
+                bottom_skip = 0
                 available_height = side_length - top_skip - bottom_skip
                 available_pixels = max(0, available_height) * side_length
                 available_bits = available_pixels * capacity_per_pixel
@@ -187,8 +187,8 @@ class TTImgEncV2Node:
 
         channels = embedded.shape[2]
         if skip_watermark_area:
-            top_skip = int(np.floor(height * 0.20))
-            bottom_skip = int(np.floor(height * 0.20))
+            top_skip = int(np.floor(height * 0.05))
+            bottom_skip = 0
             start_row = top_skip
             end_row = height - bottom_skip
             usable_rows = max(0, end_row - start_row)
@@ -230,9 +230,9 @@ class TTImgEncV2Node:
         # 若跳过水印区域，将上下留空区域填充为中性灰（提升PNG压缩率）
         if skip_watermark_area:
             if start_row > 0:
-                embedded[:start_row, :, :] = 128
-            if end_row < height:
-                embedded[end_row:, :, :] = 128
+                rng = np.random.default_rng()
+                noise_top = rng.integers(0, 256, size=(start_row, width, channels), dtype=np.uint8)
+                embedded[:start_row, :, :] = noise_top
 
         return embedded
 
