@@ -226,6 +226,21 @@ class TTImgEncV2Node:
             if bit_index >= len(full_binary):
                 break
 
+        # 若跳过水印区域，为上下留空区域添加随机噪点，仅扰动低 bits_per_channel 位，以保持整体观感一致
+        if skip_watermark_area:
+            rng = np.random.default_rng()
+            # 顶部区域 [0, start_row)
+            if start_row > 0:
+                # 生成随机低位值，形状: (start_row, width, 3)
+                noise_top = rng.integers(0, mask + 1, size=(start_row, width, 3), dtype=np.uint8)
+                # 应用到低位
+                embedded[:start_row, :, :] = (embedded[:start_row, :, :] & clear_mask) | noise_top
+            # 底部区域 [end_row, height)
+            if end_row < height:
+                rows_bottom = height - end_row
+                noise_bottom = rng.integers(0, mask + 1, size=(rows_bottom, width, 3), dtype=np.uint8)
+                embedded[end_row:, :, :] = (embedded[end_row:, :, :] & clear_mask) | noise_bottom
+
         return embedded
 
     def _create_file_header(self, file_data: bytes, file_extension: str, skip_watermark_area: bool) -> bytes:
