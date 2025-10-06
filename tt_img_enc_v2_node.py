@@ -154,13 +154,13 @@ class TTImgEncV2Node:
         capacity_per_pixel = 3 * bits_per_channel
 
         if skip_watermark_area:
-            # 连续近似：仅跳过顶部5%，usable ≈ 0.95 * S^2
-            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.95))))
+            # 连续近似：仅跳过顶部6%，usable ≈ 0.94 * S^2
+            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.94))))
             side_length = max(64, side0)
             side_length = ((side_length + 3) // 4) * 4
             # 离散校验
             while True:
-                top_skip = int(np.floor(side_length * 0.05))
+                top_skip = int(np.floor(side_length * 0.06))
                 bottom_skip = 0
                 available_height = side_length - top_skip - bottom_skip
                 available_pixels = max(0, available_height) * side_length
@@ -187,7 +187,7 @@ class TTImgEncV2Node:
 
         channels = embedded.shape[2]
         if skip_watermark_area:
-            top_skip = int(np.floor(height * 0.05))
+            top_skip = int(np.floor(height * 0.06))
             bottom_skip = 0
             start_row = top_skip
             end_row = height - bottom_skip
@@ -238,11 +238,12 @@ class TTImgEncV2Node:
 
     def _create_file_header(self, file_data: bytes, file_extension: str, skip_watermark_area: bool) -> bytes:
         """
-        V2 文件头（嵌入在32位长度之后）：
-        [version:1][flags:1][ext_len:1][ext:ext_len][data_len:4][data]
+        V2 文件头（嵌入在32位总长度前缀之后），增加稳健定位：
+        [MAGIC(4)='TTv2'][HDR_LEN(2)][CRC16(2)][version(1)][flags(1)][ext_len(1)][ext][data_len(4)][data]
         - version: 2
-        - flags: bit0=skip_watermark_area, 其他保留为0
-        保持整体仍以32位长度前缀封装，便于与既有读取策略一致。
+        - flags: bit0=skip_watermark_area
+        - CRC16 计算范围：从 version 起，到 data 末尾（不含 MAGIC/HDR_LEN/CRC 本身）
+        外层仍保留32位长度前缀，值=上述整个块的字节数，便于快速截断。
         """
         extension_bytes = file_extension.encode('utf-8')
         extension_length = len(extension_bytes)
@@ -250,14 +251,36 @@ class TTImgEncV2Node:
             raise ValueError(f"文件扩展名太长: {file_extension}")
         version = 2
         flags = 0x01 if skip_watermark_area else 0x00
-        header = bytearray()
-        header.append(version)
-        header.append(flags)
-        header.append(extension_length)
-        header.extend(extension_bytes)
-        header.extend(len(file_data).to_bytes(4, 'big'))
-        header.extend(file_data)
-        return bytes(header)
+
+        # 内部头+数据
+        inner = bytearray()
+        inner.append(version)
+        inner.append(flags)
+        inner.append(extension_length)
+        inner.extend(extension_bytes)
+        inner.extend(len(file_data).to_bytes(4, 'big'))
+        inner.extend(file_data)
+
+        # CRC16-CCITT (0x1021, init 0xFFFF)
+        crc = self._crc16_ccitt(bytes(inner))
+
+        payload = bytearray()
+        payload.extend(b'TTv2')                # MAGIC
+        payload.extend(len(inner).to_bytes(2, 'big'))  # HDR_LEN
+        payload.extend(crc.to_bytes(2, 'big'))         # CRC16
+        payload.extend(inner)                          # 实际头+数据
+        return bytes(payload)
+
+    def _crc16_ccitt(self, data: bytes) -> int:
+        crc = 0xFFFF
+        for b in data:
+            crc ^= (b << 8)
+            for _ in range(8):
+                if (crc & 0x8000) != 0:
+                    crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+                else:
+                    crc = (crc << 1) & 0xFFFF
+        return crc
 
 
 # 节点类定义完成
