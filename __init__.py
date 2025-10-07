@@ -16,13 +16,13 @@ from .tt_img_rgb_adjust_node import TTImgRGBAdjustNode
 from .tt_img_hsv_adjust_node import TTImgHSVAdjustNode
 from .tt_img_lut_node import TTImgLUTNode
 from .tt_img_enc_v2_node import TTImgEncV2Node
-from .tt_img_dec_v2_node import TTImgDecV2Node
+# from .tt_img_dec_v2_node import TTImgDecV2Node
 
 # 注册节点类
 NODE_CLASS_MAPPINGS = {
     "TT_img_enc": TTImgEncNode,
     "TT_img_enc_v2": TTImgEncV2Node,
-    "TT_img_dec_v2": TTImgDecV2Node,
+    # "TT_img_dec_v2": TTImgDecV2Node,
     "TT_img_dec": TTImgDecNode,
     "TT_img_enc_pw": TTImgEncPwNode,
     "TT_img_dec_pw": TTImgDecPwNode,
@@ -39,7 +39,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TT_img_enc": "TT img enc",
     "TT_img_enc_v2": "TT img enc V2",
-    "TT_img_dec_v2": "TT img dec V2",
+    # "TT_img_dec_v2": "TT img dec V2",
     "TT_img_dec": "TT img dec",
     "TT_img_enc_pw": "TT img enc pw",
     "TT_img_dec_pw": "TT img dec pw",
