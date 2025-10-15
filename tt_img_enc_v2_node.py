@@ -374,15 +374,14 @@ class TTImgEncV2Node:
         """
         直接将字节数据嵌入到图片中（用于多文件数据包）
         参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
+        注意：多文件数据包不添加32位长度前缀，直接写入多个独立的数据包
         """
         height, width = image.shape[0], image.shape[1]
         embedded = image.copy()
 
-        # 构造完整二进制串：前32位长度 + 数据
-        data_length = len(data_bytes)
-        length_binary = format(data_length, '032b')
+        # 多文件数据包：直接写入数据，不添加长度前缀
         data_binary = ''.join(format(byte, '08b') for byte in data_bytes)
-        full_binary = length_binary + data_binary
+        full_binary = data_binary  # 不添加长度前缀
 
         channels = embedded.shape[2]
         if skip_watermark_area:
