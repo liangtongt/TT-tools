@@ -361,8 +361,13 @@ class TTImgEncV2Node:
                 combined_packet[offset:offset + len(packet)] = packet
                 offset += len(packet)
             
-            print(f"[V2][ENC] 多文件打包完成，总长度: {total_length} 字节，文件数量: {len(numpy_images)}")
             print(f"[V2][ENC] 合并后数据包前32字节: {bytes(combined_packet[:32]).hex()}")
+            
+            # 验证每个数据包的Magic标识符
+            offset = 0
+            for i, packet in enumerate(packets):
+                print(f"[V2][ENC] 验证数据包 {i+1}: 偏移 {offset}, Magic: {packet[:4]}")
+                offset += len(packet)
             
             return bytes(combined_packet)
             
@@ -408,6 +413,19 @@ class TTImgEncV2Node:
         full_binary = data_binary  # 不添加长度前缀
         
         print(f"[V2][ENC] 多文件数据包嵌入: 原始数据 {len(data_bytes)} 字节，二进制长度 {len(full_binary)} 位")
+        
+        # 验证数据包中的Magic标识符
+        if len(data_bytes) >= 4:
+            first_magic = data_bytes[:4]
+            print(f"[V2][ENC] 数据包第一个Magic: {first_magic}")
+            
+            # 查找所有Magic标识符
+            magic_count = 0
+            for i in range(0, len(data_bytes) - 3):
+                if data_bytes[i:i+4] == b'TTv2':
+                    magic_count += 1
+                    print(f"[V2][ENC] 找到Magic标识符 {magic_count} 在偏移 {i}")
+            print(f"[V2][ENC] 总共找到 {magic_count} 个Magic标识符")
 
         channels = embedded.shape[2]
         if skip_watermark_area:
