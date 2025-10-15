@@ -66,7 +66,9 @@ class TTImgEncV2Node:
                 file_count = 1
             elif num_images < 10:
                 # 2-9张图片：多文件打包
-                temp_file = self._create_multi_file_package(numpy_images, png_compression)
+                # 直接处理多文件数据包，不创建临时文件
+                multi_file_data = self._create_multi_file_package_data(numpy_images, png_compression)
+                temp_file = None  # 不创建临时文件
                 file_extension = "multi"
                 file_count = num_images
             else:
@@ -78,7 +80,12 @@ class TTImgEncV2Node:
                 file_extension = "mp4"
                 file_count = num_images
 
-            output_image = self._create_storage_image_in_memory_v2(temp_file, file_extension, bits_per_channel, skip_watermark_area)
+            if file_extension == "multi":
+                # 多文件打包：直接使用数据包创建存储图片
+                output_image = self._create_storage_image_in_memory_v2_multi(multi_file_data, bits_per_channel, skip_watermark_area)
+            else:
+                # 单文件或视频：使用文件路径创建存储图片
+                output_image = self._create_storage_image_in_memory_v2(temp_file, file_extension, bits_per_channel, skip_watermark_area)
 
             if temp_file and os.path.exists(temp_file):
                 os.remove(temp_file)
@@ -305,19 +312,11 @@ class TTImgEncV2Node:
                     crc = (crc << 1) & 0xFFFF
         return crc
 
-    def _create_multi_file_package(self, numpy_images, png_compression):
+    def _create_multi_file_package_data(self, numpy_images, png_compression):
         """
-        创建多文件打包，参考hide_v2.js的encodeMultipleFilesToImageV2逻辑
-        为每个图片创建独立的数据包，然后合并成一个文件
+        创建多文件数据包，参考hide_v2.js的encodeMultipleFilesToImageV2逻辑
+        返回合并后的数据包字节流
         """
-        import tempfile
-        import uuid
-        
-        # 创建临时文件存储多文件包
-        random_suffix = str(uuid.uuid4())[:8]
-        temp_path = os.path.join(self.temp_dir, f"temp_multi_package_{random_suffix}.multi")
-        
-        # 为每个图片创建PNG文件并构建数据包
         packets = []
         temp_files = []
         
@@ -346,19 +345,96 @@ class TTImgEncV2Node:
                 combined_packet[offset:offset + len(packet)] = packet
                 offset += len(packet)
             
-            # 写入合并后的数据包到文件
-            with open(temp_path, 'wb') as f:
-                f.write(combined_packet)
-            
             print(f"[V2][ENC] 多文件打包完成，总长度: {total_length} 字节，文件数量: {len(numpy_images)}")
             
-            return temp_path
+            return bytes(combined_packet)
             
         finally:
             # 清理临时PNG文件
             for temp_file in temp_files:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
+
+    def _create_storage_image_in_memory_v2_multi(self, combined_packet: bytes, bits_per_channel: int, skip_watermark_area: bool) -> np.ndarray:
+        """
+        为多文件数据包创建存储图片，直接将数据包写入RGB通道
+        参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
+        """
+        # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGB 3通道
+        side = self._calculate_required_image_size_v2(combined_packet, bits_per_channel, skip_watermark_area)
+
+        # 生成纯色画布 RGB（中性灰）
+        image = np.ones((side, side, 3), dtype=np.uint8) * 128
+
+        # 嵌入数据（多文件数据包不需要额外的文件头）
+        embedded = self._embed_data_multi_bit_direct(image, combined_packet, bits_per_channel, skip_watermark_area)
+        return embedded
+
+    def _embed_data_multi_bit_direct(self, image: np.ndarray, data_bytes: bytes, bits_per_channel: int, skip_watermark_area: bool) -> np.ndarray:
+        """
+        直接将字节数据嵌入到图片中（用于多文件数据包）
+        参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
+        """
+        height, width = image.shape[0], image.shape[1]
+        embedded = image.copy()
+
+        # 构造完整二进制串：前32位长度 + 数据
+        data_length = len(data_bytes)
+        length_binary = format(data_length, '032b')
+        data_binary = ''.join(format(byte, '08b') for byte in data_bytes)
+        full_binary = length_binary + data_binary
+
+        channels = embedded.shape[2]
+        if skip_watermark_area:
+            top_skip = int(np.floor(height * 0.06))
+            bottom_skip = 0
+            start_row = top_skip
+            end_row = height - bottom_skip
+            usable_rows = max(0, end_row - start_row)
+            total_capacity_bits = usable_rows * width * channels * bits_per_channel
+        else:
+            start_row = 0
+            end_row = height
+            total_capacity_bits = height * width * channels * bits_per_channel
+        
+        if len(full_binary) > total_capacity_bits:
+            # 理论上不会发生，因为尺寸已按容量计算
+            raise ValueError("容量计算不足，无法写入全部数据")
+
+        bit_index = 0
+        mask = (1 << bits_per_channel) - 1
+        clear_mask = 0xFF ^ mask  # 清除最低 bits_per_channel 位
+
+        for i in range(start_row, end_row):
+            for j in range(width):
+                for c in range(channels):
+                    if bit_index >= len(full_binary):
+                        break
+                    # 取接下来 bits_per_channel 位，不足则右侧用0补齐
+                    remaining = len(full_binary) - bit_index
+                    take = min(bits_per_channel, remaining)
+                    chunk = full_binary[bit_index:bit_index + take]
+                    if take < bits_per_channel:
+                        chunk = chunk + '0' * (bits_per_channel - take)
+                    value = int(chunk, 2) & mask
+
+                    original = embedded[i, j, c]
+                    embedded[i, j, c] = (original & clear_mask) | value
+
+                    bit_index += take
+                if bit_index >= len(full_binary):
+                    break
+            if bit_index >= len(full_binary):
+                break
+
+        # 若跳过水印区域，将上下留空区域填充为随机噪声（提升PNG压缩率）
+        if skip_watermark_area:
+            if start_row > 0:
+                rng = np.random.default_rng()
+                noise_top = rng.integers(0, 256, size=(start_row, width, channels), dtype=np.uint8)
+                embedded[:start_row, :, :] = noise_top
+
+        return embedded
 
     def _build_packet_v2(self, version, flags, ext, data_bytes):
         """
