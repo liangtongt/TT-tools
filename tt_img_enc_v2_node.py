@@ -66,11 +66,13 @@ class TTImgEncV2Node:
                 file_count = 1
             elif num_images < 10:
                 # 2-9张图片：多文件打包
+                print(f"[V2][ENC] 检测到多文件模式，图片数量: {num_images}")
                 # 直接处理多文件数据包，不创建临时文件
                 multi_file_data = self._create_multi_file_package_data(numpy_images, png_compression)
                 temp_file = None  # 不创建临时文件
                 file_extension = "multi"
                 file_count = num_images
+                print(f"[V2][ENC] 多文件数据包创建完成，总大小: {len(multi_file_data)} 字节")
             else:
                 # 10张及以上：MP4视频
                 if audio is not None:
@@ -82,10 +84,14 @@ class TTImgEncV2Node:
 
             if file_extension == "multi":
                 # 多文件打包：直接使用数据包创建存储图片
+                print(f"[V2][ENC] 开始创建多文件存储图片，数据大小: {len(multi_file_data)} 字节")
                 output_image = self._create_storage_image_in_memory_v2_multi(multi_file_data, bits_per_channel, skip_watermark_area)
+                print(f"[V2][ENC] 多文件存储图片创建完成，尺寸: {output_image.shape}")
             else:
                 # 单文件或视频：使用文件路径创建存储图片
+                print(f"[V2][ENC] 开始创建单文件存储图片，文件: {temp_file}")
                 output_image = self._create_storage_image_in_memory_v2(temp_file, file_extension, bits_per_channel, skip_watermark_area)
+                print(f"[V2][ENC] 单文件存储图片创建完成，尺寸: {output_image.shape}")
 
             if temp_file and os.path.exists(temp_file):
                 os.remove(temp_file)
@@ -320,8 +326,12 @@ class TTImgEncV2Node:
         packets = []
         temp_files = []
         
+        print(f"[V2][ENC] 开始创建多文件数据包，图片数量: {len(numpy_images)}")
+        
         try:
             for i, img in enumerate(numpy_images):
+                print(f"[V2][ENC] 处理图片 {i + 1}/{len(numpy_images)}")
+                
                 # 为每个图片创建临时PNG文件
                 temp_png = self.utils.image_to_png(img, png_compression)
                 temp_files.append(temp_png)
@@ -330,22 +340,29 @@ class TTImgEncV2Node:
                 with open(temp_png, 'rb') as f:
                     file_data = f.read()
                 
+                print(f"[V2][ENC] 图片 {i + 1} PNG文件大小: {len(file_data)} 字节")
+                
                 # 构建数据包（参考JS版本的buildPacket）
                 packet = self._build_packet_v2(2, 0, "png", file_data)
                 packets.append(packet)
                 
-                print(f"[V2][ENC] 处理图片 {i + 1}/{len(numpy_images)}: {len(file_data)} 字节")
+                print(f"[V2][ENC] 图片 {i + 1} 数据包大小: {len(packet)} 字节")
+                print(f"[V2][ENC] 图片 {i + 1} 数据包前16字节: {packet[:16].hex()}")
             
             # 将所有数据包合并成一个连续的字节流
             total_length = sum(len(packet) for packet in packets)
             combined_packet = bytearray(total_length)
             
+            print(f"[V2][ENC] 开始合并数据包，总长度: {total_length} 字节")
+            
             offset = 0
-            for packet in packets:
+            for i, packet in enumerate(packets):
+                print(f"[V2][ENC] 合并数据包 {i + 1}，偏移: {offset}，长度: {len(packet)}")
                 combined_packet[offset:offset + len(packet)] = packet
                 offset += len(packet)
             
             print(f"[V2][ENC] 多文件打包完成，总长度: {total_length} 字节，文件数量: {len(numpy_images)}")
+            print(f"[V2][ENC] 合并后数据包前32字节: {bytes(combined_packet[:32]).hex()}")
             
             return bytes(combined_packet)
             
@@ -360,14 +377,21 @@ class TTImgEncV2Node:
         为多文件数据包创建存储图片，直接将数据包写入RGB通道
         参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
         """
+        print(f"[V2][ENC] 创建多文件存储图片，数据包大小: {len(combined_packet)} 字节")
+        
         # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGB 3通道
         side = self._calculate_required_image_size_v2(combined_packet, bits_per_channel, skip_watermark_area)
+        print(f"[V2][ENC] 计算所需图片尺寸: {side}x{side}")
 
         # 生成纯色画布 RGB（中性灰）
         image = np.ones((side, side, 3), dtype=np.uint8) * 128
+        print(f"[V2][ENC] 创建画布完成，尺寸: {image.shape}")
 
         # 嵌入数据（多文件数据包不需要额外的文件头）
+        print(f"[V2][ENC] 开始嵌入多文件数据包")
         embedded = self._embed_data_multi_bit_direct(image, combined_packet, bits_per_channel, skip_watermark_area)
+        print(f"[V2][ENC] 多文件数据包嵌入完成")
+        
         return embedded
 
     def _embed_data_multi_bit_direct(self, image: np.ndarray, data_bytes: bytes, bits_per_channel: int, skip_watermark_area: bool) -> np.ndarray:
@@ -382,6 +406,8 @@ class TTImgEncV2Node:
         # 多文件数据包：直接写入数据，不添加长度前缀
         data_binary = ''.join(format(byte, '08b') for byte in data_bytes)
         full_binary = data_binary  # 不添加长度前缀
+        
+        print(f"[V2][ENC] 多文件数据包嵌入: 原始数据 {len(data_bytes)} 字节，二进制长度 {len(full_binary)} 位")
 
         channels = embedded.shape[2]
         if skip_watermark_area:
@@ -444,6 +470,8 @@ class TTImgEncV2Node:
         if len(extension_bytes) > 255:
             raise ValueError('扩展名过长')
         
+        print(f"[V2][ENC] 构建数据包: version={version}, flags={flags}, ext='{ext}', data_len={len(data_bytes)}")
+        
         # 内部数据
         inner = bytearray()
         inner.append(version)
@@ -453,8 +481,11 @@ class TTImgEncV2Node:
         inner.extend(len(data_bytes).to_bytes(4, 'big'))
         inner.extend(data_bytes)
         
+        print(f"[V2][ENC] 内部数据长度: {len(inner)} 字节")
+        
         # CRC16-CCITT
         crc = self._crc16_ccitt(bytes(inner))
+        print(f"[V2][ENC] CRC16: {crc:04x}")
         
         # 完整数据包
         packet = bytearray()
@@ -462,6 +493,9 @@ class TTImgEncV2Node:
         packet.extend(len(inner).to_bytes(4, 'big'))  # HDR_LEN
         packet.extend(crc.to_bytes(2, 'big'))  # CRC16
         packet.extend(inner)  # 内部数据
+        
+        print(f"[V2][ENC] 完整数据包长度: {len(packet)} 字节")
+        print(f"[V2][ENC] 数据包Magic: {packet[:4]}")
         
         return bytes(packet)
 
