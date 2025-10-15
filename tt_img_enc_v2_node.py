@@ -385,11 +385,38 @@ class TTImgEncV2Node:
         print(f"[V2][ENC] 创建多文件存储图片，数据包大小: {len(combined_packet)} 字节")
         
         # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGB 3通道
-        side = self._calculate_required_image_size_v2(combined_packet, bits_per_channel, skip_watermark_area)
-        print(f"[V2][ENC] 计算所需图片尺寸: {side}x{side}")
+        # 多文件数据包不需要额外的长度前缀，直接使用数据包大小
+        bytes_needed = len(combined_packet)
+        bits_needed = bytes_needed * 8
+        
+        # 每像素可用位数：3 通道(RGB) * bits_per_channel
+        capacity_per_pixel = 3 * bits_per_channel
+        
+        if skip_watermark_area:
+            # 连续近似：仅跳过顶部6%，usable ≈ 0.94 * S^2
+            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.94))))
+            side_length = max(64, side0)
+            side_length = ((side_length + 3) // 4) * 4
+            # 离散校验
+            while True:
+                top_skip = int(np.floor(side_length * 0.06))
+                bottom_skip = 0
+                available_height = side_length - top_skip - bottom_skip
+                available_pixels = max(0, available_height) * side_length
+                available_bits = available_pixels * capacity_per_pixel
+                if available_bits >= bits_needed:
+                    break
+                side_length += 4
+        else:
+            required_pixels = int(np.ceil(bits_needed / float(capacity_per_pixel)))
+            side_length = int(np.ceil(np.sqrt(required_pixels)))
+            side_length = max(64, side_length)
+            side_length = ((side_length + 3) // 4) * 4
+        
+        print(f"[V2][ENC] 计算所需图片尺寸: {side_length}x{side_length}")
 
         # 生成纯色画布 RGB（中性灰）
-        image = np.ones((side, side, 3), dtype=np.uint8) * 128
+        image = np.ones((side_length, side_length, 3), dtype=np.uint8) * 128
         print(f"[V2][ENC] 创建画布完成，尺寸: {image.shape}")
 
         # 嵌入数据（多文件数据包不需要额外的文件头）

@@ -172,3 +172,7 @@ tt_img_dec_v2_node_beta.py
 test_multi_file_packing.py
 hide_v2.js
 extract_v2.js
+test_core_logic_v2.py
+.gitignore
+multi.png
+test_multi_file_v2.py
