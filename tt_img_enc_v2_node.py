@@ -39,10 +39,14 @@ class TTImgEncV2Node:
 
     def process_images(self, images, fps=16.0, png_compression=6, skip_watermark_area=True, video_compression=19, audio=None, usage_notes=None):
         """
-        将输入图片打包为文件（单图->PNG，多图->MP4[可选音频]），并以更高位宽的隐写方式写入到存储图片中。
+        将输入图片打包为文件，并以更高位宽的隐写方式写入到存储图片中。
+        决策逻辑：
+        - 单张图片：PNG格式
+        - 2-9张图片：多文件打包（参考hide_v2.js的encodeMultipleFilesToImageV2）
+        - 10张及以上：MP4视频（可选音频）
         与V1不同：
         - 使用整张图片区域（不保留水印安全边界）
-        - 使用可配置的每通道位数（默认2位）提升容量
+        - 使用可配置的每通道位数（默认8位）提升容量
         """
         try:
             # 自动使用最大位宽
@@ -53,16 +57,26 @@ class TTImgEncV2Node:
 
             temp_file = None
             file_extension = None
+            file_count = 1
 
-            if num_images > 1:
+            if num_images == 1:
+                # 单张图片：PNG格式
+                temp_file = self.utils.image_to_png(numpy_images[0], png_compression)
+                file_extension = "png"
+                file_count = 1
+            elif num_images < 10:
+                # 2-9张图片：多文件打包
+                temp_file = self._create_multi_file_package(numpy_images, png_compression)
+                file_extension = "multi"
+                file_count = num_images
+            else:
+                # 10张及以上：MP4视频
                 if audio is not None:
                     temp_file = self.utils.images_to_mp4_with_audio(numpy_images, fps, audio, video_compression)
                 else:
                     temp_file = self.utils.images_to_mp4(numpy_images, fps, video_compression)
                 file_extension = "mp4"
-            else:
-                temp_file = self.utils.image_to_png(numpy_images[0], png_compression)
-                file_extension = "png"
+                file_count = num_images
 
             output_image = self._create_storage_image_in_memory_v2(temp_file, file_extension, bits_per_channel, skip_watermark_area)
 
@@ -77,9 +91,11 @@ class TTImgEncV2Node:
                 print(f"=== 处理完成 ===")
                 print(f"输出图片尺寸: {output_image.shape[1]}x{output_image.shape[0]}")
                 print(f"文件类型: {file_extension}")
+                print(f"文件数量: {file_count}")
                 print(f"每通道位数: {bits_per_channel}")
                 print(f"跳过上下20%: {bool(skip_watermark_area)}")
-                print(f"视频压缩率(CRF): {video_compression}")
+                if file_extension == "mp4":
+                    print(f"视频压缩率(CRF): {video_compression}")
 
             return (output_tensor,)
 
@@ -245,7 +261,7 @@ class TTImgEncV2Node:
         V2 文件头（嵌入在32位总长度前缀之后），增加稳健定位：
         [MAGIC(4)='TTv2'][HDR_LEN(4)][CRC16(2)][version(1)][flags(1)][ext_len(1)][ext][data_len(4)][data]
         - version: 2
-        - flags: bit0=skip_watermark_area
+        - flags: bit0=skip_watermark_area, bit1=multi_file_package
         - CRC16 计算范围：从 version 起，到 data 末尾（不含 MAGIC/HDR_LEN/CRC 本身）
         外层仍保留32位长度前缀，值=上述整个块的字节数，便于快速截断。
         """
@@ -255,6 +271,9 @@ class TTImgEncV2Node:
             raise ValueError(f"文件扩展名太长: {file_extension}")
         version = 2
         flags = 0x01 if skip_watermark_area else 0x00
+        # 如果是多文件包，设置bit1
+        if file_extension == "multi":
+            flags |= 0x02
 
         # 内部头+数据
         inner = bytearray()
@@ -285,6 +304,91 @@ class TTImgEncV2Node:
                 else:
                     crc = (crc << 1) & 0xFFFF
         return crc
+
+    def _create_multi_file_package(self, numpy_images, png_compression):
+        """
+        创建多文件打包，参考hide_v2.js的encodeMultipleFilesToImageV2逻辑
+        为每个图片创建独立的数据包，然后合并成一个文件
+        """
+        import tempfile
+        import uuid
+        
+        # 创建临时文件存储多文件包
+        random_suffix = str(uuid.uuid4())[:8]
+        temp_path = os.path.join(self.temp_dir, f"temp_multi_package_{random_suffix}.multi")
+        
+        # 为每个图片创建PNG文件并构建数据包
+        packets = []
+        temp_files = []
+        
+        try:
+            for i, img in enumerate(numpy_images):
+                # 为每个图片创建临时PNG文件
+                temp_png = self.utils.image_to_png(img, png_compression)
+                temp_files.append(temp_png)
+                
+                # 读取PNG文件数据
+                with open(temp_png, 'rb') as f:
+                    file_data = f.read()
+                
+                # 构建数据包（参考JS版本的buildPacket）
+                packet = self._build_packet_v2(2, 0, "png", file_data)
+                packets.append(packet)
+                
+                print(f"[V2][ENC] 处理图片 {i + 1}/{len(numpy_images)}: {len(file_data)} 字节")
+            
+            # 将所有数据包合并成一个连续的字节流
+            total_length = sum(len(packet) for packet in packets)
+            combined_packet = bytearray(total_length)
+            
+            offset = 0
+            for packet in packets:
+                combined_packet[offset:offset + len(packet)] = packet
+                offset += len(packet)
+            
+            # 写入合并后的数据包到文件
+            with open(temp_path, 'wb') as f:
+                f.write(combined_packet)
+            
+            print(f"[V2][ENC] 多文件打包完成，总长度: {total_length} 字节，文件数量: {len(numpy_images)}")
+            
+            return temp_path
+            
+        finally:
+            # 清理临时PNG文件
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
+
+    def _build_packet_v2(self, version, flags, ext, data_bytes):
+        """
+        构建V2数据包，参考JS版本的buildPacket函数
+        [MAGIC(4)='TTv2'][HDR_LEN(4)][CRC16(2)][version(1)][flags(1)][ext_len(1)][ext][data_len(4)][data]
+        """
+        extension_bytes = ext.encode('utf-8') if ext else b''
+        if len(extension_bytes) > 255:
+            raise ValueError('扩展名过长')
+        
+        # 内部数据
+        inner = bytearray()
+        inner.append(version)
+        inner.append(flags)
+        inner.append(len(extension_bytes))
+        inner.extend(extension_bytes)
+        inner.extend(len(data_bytes).to_bytes(4, 'big'))
+        inner.extend(data_bytes)
+        
+        # CRC16-CCITT
+        crc = self._crc16_ccitt(bytes(inner))
+        
+        # 完整数据包
+        packet = bytearray()
+        packet.extend(b'TTv2')  # MAGIC
+        packet.extend(len(inner).to_bytes(4, 'big'))  # HDR_LEN
+        packet.extend(crc.to_bytes(2, 'big'))  # CRC16
+        packet.extend(inner)  # 内部数据
+        
+        return bytes(packet)
 
 
 # 节点类定义完成
