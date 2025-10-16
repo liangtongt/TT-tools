@@ -194,3 +194,7 @@ tt2.txt
 tt3.txt
 txt.png
 txt3.png
+test_force_skip_watermark.png
+test_large_smart_watermark.png
+test_no_skip_watermark.png
+test_smart_watermark.png

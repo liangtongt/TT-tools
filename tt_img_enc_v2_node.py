@@ -426,6 +426,28 @@ class TTImgEncV2Node:
         
         return embedded
 
+    def _estimate_first_file_size(self, data_bytes: bytes) -> int:
+        """
+        估算第一个文件的大小
+        用于智能水印控制，确保第一个文件在扫描区域内
+        """
+        if len(data_bytes) < 4:
+            return 0
+        
+        # 查找第一个Magic标识符
+        first_magic_pos = data_bytes.find(b'TTv2')
+        if first_magic_pos == -1:
+            return 0
+        
+        # 查找第二个Magic标识符
+        second_magic_pos = data_bytes.find(b'TTv2', first_magic_pos + 4)
+        if second_magic_pos == -1:
+            # 只有一个文件，返回整个数据包大小
+            return len(data_bytes)
+        
+        # 返回第一个文件的大小
+        return second_magic_pos
+
     def _embed_data_multi_bit_direct(self, image: np.ndarray, data_bytes: bytes, bits_per_channel: int, skip_watermark_area: bool) -> np.ndarray:
         """
         直接将字节数据嵌入到图片中（用于多文件数据包）
@@ -458,14 +480,16 @@ class TTImgEncV2Node:
 
         channels = embedded.shape[2]
         
-        # 修复：多文件打包时，确保第一个文件在顶部15%区域内
-        # 小程序扫描策略：优先扫描顶部15%区域（向后兼容）
+        # 修复：多文件打包时，强制跳过水印区域
+        # 开启跳过水印就强制跳过前6%的行
         if skip_watermark_area:
-            # 对于多文件打包，不使用跳过水印区域，确保第一个文件在顶部
-            print(f"[V2][ENC] 多文件打包：禁用跳过水印区域，确保第一个文件在顶部15%区域内")
-            start_row = 0
+            # 强制跳过水印区域（顶部6%行数）
+            watermark_skip_rows = int(height * 0.06)
+            start_row = watermark_skip_rows
             end_row = height
-            total_capacity_bits = height * width * channels * bits_per_channel
+            usable_rows = max(0, end_row - start_row)
+            total_capacity_bits = usable_rows * width * channels * bits_per_channel
+            print(f"[V2][ENC] 强制跳过水印区域: {watermark_skip_rows}行")
         else:
             start_row = 0
             end_row = height
