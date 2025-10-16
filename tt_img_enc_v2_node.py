@@ -74,11 +74,8 @@ class TTImgEncV2Node:
                 file_count = num_images
                 print(f"[V2][ENC] 多文件数据包创建完成，总大小: {len(multi_file_data)} 字节")
             else:
-                # 10张及以上：MP4视频
-                if audio is not None:
-                    temp_file = self.utils.images_to_mp4_with_audio(numpy_images, fps, audio, video_compression)
-                else:
-                    temp_file = self.utils.images_to_mp4(numpy_images, fps, video_compression)
+                # 10张及以上：MP4视频（统一方法，自动处理音频）
+                temp_file = self.utils.images_to_mp4(numpy_images, fps, video_compression, audio)
                 file_extension = "mp4"
                 file_count = num_images
 

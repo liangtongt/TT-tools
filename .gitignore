@@ -205,3 +205,4 @@ test_rgb_with_skip.png
 test_multi_file_watermark.py
 test_multi_file_config.py
 test_pipe_method.py
+test_unified_method.py

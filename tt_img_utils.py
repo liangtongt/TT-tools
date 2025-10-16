@@ -16,8 +16,8 @@ class TTImgUtils:
         # 创建必要的目录
         os.makedirs(self.temp_dir, exist_ok=True)
     
-    def images_to_mp4(self, images: List[np.ndarray], fps: float, crf: int = 19) -> str:
-        """将多张图片转换为MP4视频（使用FFmpeg）"""
+    def images_to_mp4(self, images: List[np.ndarray], fps: float, crf: int = 19, audio=None) -> str:
+        """将多张图片转换为MP4视频（使用FFmpeg），支持可选音频"""
         random_suffix = str(uuid.uuid4())[:8]
         temp_path = os.path.join(self.temp_dir, f"temp_video_{random_suffix}.mp4")
         
@@ -33,12 +33,21 @@ class TTImgUtils:
         # 优化：批量处理图片尺寸调整
         resized_images = self._batch_resize_images(images, width, height)
         
-        # 优先使用FFmpeg管道创建视频（避免中间文件）
-        try:
-            return self._create_video_with_ffmpeg_pipe(resized_images, temp_path, fps, width, height, crf)
-        except Exception as e:
-            print(f"[FALLBACK] 管道方法失败，回退到文件方法: {e}")
-            return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
+        # 根据是否有音频选择不同的处理方法
+        if audio is not None:
+            # 有音频：一步完成音视频合成
+            try:
+                return self._create_video_with_audio_pipe(resized_images, temp_path, fps, width, height, crf, audio)
+            except Exception as e:
+                print(f"[FALLBACK] 音视频管道方法失败，回退到分离方法: {e}")
+                return self.images_to_mp4_with_audio(resized_images, fps, audio, crf)
+        else:
+            # 无音频：只合成视频
+            try:
+                return self._create_video_with_ffmpeg_pipe(resized_images, temp_path, fps, width, height, crf)
+            except Exception as e:
+                print(f"[FALLBACK] 视频管道方法失败，回退到文件方法: {e}")
+                return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
     
     def _batch_resize_images(self, images: List[np.ndarray], target_width: int, target_height: int) -> List[np.ndarray]:
         """批量调整图片尺寸，优化性能"""
@@ -123,6 +132,92 @@ class TTImgUtils:
             print(f"[PIPE] FFmpeg管道创建视频异常: {e}")
             raise RuntimeError(f"视频创建失败: {e}")
 
+    def _create_video_with_audio_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19, audio=None) -> str:
+        """使用FFmpeg管道一步完成音视频合成（类似ComfyUI-VideoHelperSuite）"""
+        try:
+            print(f"[AUDIO_PIPE] 开始一步完成音视频合成，帧数: {len(images)}, 尺寸: {width}x{height}, FPS: {fps}, CRF: {crf}")
+            
+            # 处理音频输入
+            audio_path = self._process_audio_input(audio)
+            print(f"[AUDIO_PIPE] 音频文件准备完成: {audio_path}")
+            
+            # 准备图像数据
+            frame_data = b''
+            for i, img in enumerate(images):
+                # 确保图像是RGB格式
+                if len(img.shape) == 3 and img.shape[2] == 3:
+                    img_rgb = img
+                elif len(img.shape) == 3 and img.shape[2] == 4:
+                    # RGBA转RGB
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+                else:
+                    # 灰度图转RGB
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                
+                # 确保尺寸正确
+                if img_rgb.shape[1] != width or img_rgb.shape[0] != height:
+                    img_rgb = cv2.resize(img_rgb, (width, height), interpolation=cv2.INTER_LINEAR)
+                
+                # 确保数据类型正确
+                if img_rgb.dtype != np.uint8:
+                    img_rgb = img_rgb.astype(np.uint8)
+                
+                # 转换为字节数据
+                frame_bytes = img_rgb.tobytes()
+                frame_data += frame_bytes
+                
+                if i % 10 == 0:  # 每10帧打印一次进度
+                    print(f"[AUDIO_PIPE] 已处理 {i+1}/{len(images)} 帧")
+            
+            print(f"[AUDIO_PIPE] 图像数据准备完成，总大小: {len(frame_data)} 字节")
+            
+            # 使用FFmpeg一步完成音视频合成
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 'rawvideo',           # 输入格式：原始视频
+                '-pix_fmt', 'rgb24',        # 像素格式：RGB24
+                '-s', f'{width}x{height}',   # 视频尺寸
+                '-r', str(fps),             # 帧率
+                '-i', 'pipe:0',             # 视频输入：管道
+                '-i', audio_path,           # 音频输入：文件
+                '-c:v', 'libx264',          # 视频编码器：H.264
+                '-crf', str(crf),           # 视频质量
+                '-c:a', 'aac',              # 音频编码器：AAC
+                '-map', '0:v:0',            # 映射视频流
+                '-map', '1:a:0',            # 映射音频流
+                '-shortest',                # 以最短流为准
+                '-preset', 'ultrafast',     # 编码预设：最快
+                output_path
+            ]
+            
+            print(f"[AUDIO_PIPE] FFmpeg命令: {' '.join(cmd)}")
+            
+            # 通过管道传递数据
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate(input=frame_data)
+            
+            if process.returncode == 0:
+                print("[AUDIO_PIPE] 成功一步完成音视频合成")
+                return output_path
+            else:
+                print(f"[AUDIO_PIPE] FFmpeg音视频合成失败: {stderr.decode()}")
+                raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
+                
+        except FileNotFoundError:
+            print("[AUDIO_PIPE] FFmpeg不可用")
+            raise RuntimeError("无法创建音视频：FFmpeg不可用")
+        except Exception as e:
+            print(f"[AUDIO_PIPE] FFmpeg音视频合成异常: {e}")
+            raise RuntimeError(f"音视频合成失败: {e}")
+        finally:
+            # 清理音频文件
+            try:
+                if 'audio_path' in locals() and os.path.exists(audio_path):
+                    os.remove(audio_path)
+                    print(f"[AUDIO_PIPE] 已清理音频文件: {audio_path}")
+            except Exception as e:
+                print(f"[AUDIO_PIPE] 清理音频文件失败: {e}")
+
     def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
         """使用FFmpeg直接创建视频（备用方法）"""
         try:
@@ -191,187 +286,66 @@ class TTImgUtils:
             raise RuntimeError(f"视频创建失败: {e}")
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio, crf: int = 19) -> str:
-        """将多张图片转换为带音频的MP4视频（iPhone兼容版本）"""
-        # 先生成无音频的MP4
-        video_path = self.images_to_mp4(images, fps, crf)
-        
-        # 如果没有音频，直接返回视频
-        if audio is None:
-            return video_path
-        
-        # 创建带音频的MP4
-        random_suffix = str(uuid.uuid4())[:8]
-        audio_video_path = os.path.join(self.temp_dir, f"temp_video_with_audio_{random_suffix}.mp4")
-        
-        try:
-            # 处理音频数据
-            audio_path = self._process_audio_input(audio)
-            
-            # 使用FFmpeg合成音频和视频
-            self._merge_audio_video(video_path, audio_path, audio_video_path)
-            
-            # 清理临时音频文件
-            if audio_path and os.path.exists(audio_path):
-                os.remove(audio_path)
-            
-            # 清理原始视频文件
-            if os.path.exists(video_path):
-                os.remove(video_path)
-            
-            return audio_video_path
-            
-        except Exception as e:
-            print(f"音频合成失败: {e}")
-            # 如果音频合成失败，返回原始视频
-            return video_path
+        """将多张图片转换为带音频的MP4视频（兼容性方法，现在调用统一方法）"""
+        print("[COMPAT] 调用兼容性方法，将转发到统一方法")
+        return self.images_to_mp4(images, fps, crf, audio)
     
     def _process_audio_input(self, audio) -> str:
-        """处理音频输入，返回临时音频文件路径"""
+        """简化的音频输入处理（类似ComfyUI-VideoHelperSuite）"""
         random_suffix = str(uuid.uuid4())[:8]
         audio_path = os.path.join(self.temp_dir, f"temp_audio_{random_suffix}.wav")
         
-        # 如果audio是文件路径
-        if isinstance(audio, str) and os.path.exists(audio):
-            # 如果是音频文件，直接复制
-            import shutil
-            shutil.copy2(audio, audio_path)
-            return audio_path
-        
-        # 如果audio是numpy数组（音频数据）
-        elif isinstance(audio, np.ndarray):
-            # 将numpy数组保存为WAV文件
-            import soundfile as sf
-            sf.write(audio_path, audio, 44100)  # 默认采样率44.1kHz
-            return audio_path
-        
-        # 如果audio是torch张量
-        elif hasattr(audio, 'cpu'):
-            # 转换为numpy数组
-            audio_np = audio.cpu().numpy()
-            import soundfile as sf
-            sf.write(audio_path, audio_np, 44100)
-            return audio_path
-        
-        # 如果audio是字典（ComfyUI音频格式）
-        elif isinstance(audio, dict):
-            if 'samples' in audio:
-                # 提取音频数据
+        try:
+            # 1. 文件路径（最常见）
+            if isinstance(audio, str) and os.path.exists(audio):
+                import shutil
+                shutil.copy2(audio, audio_path)
+                print(f"[AUDIO] 复制音频文件: {audio} -> {audio_path}")
+                return audio_path
+            
+            # 2. ComfyUI标准格式（最常见）
+            elif isinstance(audio, dict) and 'samples' in audio:
                 audio_data = audio['samples']
+                sample_rate = audio.get('sample_rate', 44100)
+                
                 if hasattr(audio_data, 'cpu'):
                     audio_data = audio_data.cpu().numpy()
                 
-                # 获取采样率
-                sample_rate = audio.get('sample_rate', 44100)
-                
-                # 保存音频文件
                 import soundfile as sf
                 sf.write(audio_path, audio_data, sample_rate)
+                print(f"[AUDIO] 保存ComfyUI音频数据: {len(audio_data)} 样本, {sample_rate}Hz")
                 return audio_path
-        
-        # 如果audio是LazyAudioMap（ComfyUI-VideoHelperSuite格式）
-        elif hasattr(audio, '__class__') and 'LazyAudioMap' in str(type(audio)):
-            try:
-                print(f"处理LazyAudioMap: {type(audio)}")
-                
-                # 根据调试信息，LazyAudioMap有'file'属性
-                if hasattr(audio, 'file') and audio.file:
-                    print(f"LazyAudioMap.file: {audio.file}")
-                    if os.path.exists(audio.file):
-                        import shutil
-                        shutil.copy2(audio.file, audio_path)
-                        print(f"成功复制音频文件: {audio.file} -> {audio_path}")
-                        return audio_path
-                    else:
-                        print(f"音频文件不存在: {audio.file}")
-                
-                # 尝试通过索引访问音频数据
-                try:
-                    # LazyAudioMap可能支持索引访问
-                    audio_data = audio[0] if len(audio) > 0 else None
-                    if audio_data is not None:
-                        if isinstance(audio_data, np.ndarray):
-                            import soundfile as sf
-                            sf.write(audio_path, audio_data, 44100)
-                            print(f"成功从索引获取音频数据")
-                            return audio_path
-                        elif hasattr(audio_data, 'cpu'):
-                            audio_np = audio_data.cpu().numpy()
-                            import soundfile as sf
-                            sf.write(audio_path, audio_np, 44100)
-                            print(f"成功从索引获取音频张量数据")
-                            return audio_path
-                except Exception as e:
-                    print(f"通过索引访问音频数据失败: {e}")
-                
-                # 尝试通过get方法获取音频数据
-                try:
-                    audio_data = audio.get('samples') or audio.get('data') or audio.get('audio')
-                    if audio_data is not None:
-                        if isinstance(audio_data, np.ndarray):
-                            import soundfile as sf
-                            sf.write(audio_path, audio_data, 44100)
-                            print(f"成功通过get方法获取音频数据")
-                            return audio_path
-                        elif hasattr(audio_data, 'cpu'):
-                            audio_np = audio_data.cpu().numpy()
-                            import soundfile as sf
-                            sf.write(audio_path, audio_np, 44100)
-                            print(f"成功通过get方法获取音频张量数据")
-                            return audio_path
-                except Exception as e:
-                    print(f"通过get方法获取音频数据失败: {e}")
-                
-                # 尝试迭代访问音频数据
-                try:
-                    for item in audio:
-                        if isinstance(item, np.ndarray):
-                            import soundfile as sf
-                            sf.write(audio_path, item, 44100)
-                            print(f"成功通过迭代获取音频数据")
-                            return audio_path
-                        elif hasattr(item, 'cpu'):
-                            audio_np = item.cpu().numpy()
-                            import soundfile as sf
-                            sf.write(audio_path, audio_np, 44100)
-                            print(f"成功通过迭代获取音频张量数据")
-                            return audio_path
-                        break  # 只取第一个元素
-                except Exception as e:
-                    print(f"通过迭代获取音频数据失败: {e}")
-                    
-            except Exception as e:
-                print(f"处理LazyAudioMap失败: {e}")
-        
-        # 尝试通过属性访问获取音频数据
-        try:
-            # 检查是否有常见的音频属性
-            audio_attrs = ['audio', 'data', 'waveform', 'signal']
-            for attr in audio_attrs:
-                if hasattr(audio, attr):
-                    audio_data = getattr(audio, attr)
-                    if isinstance(audio_data, np.ndarray):
-                        import soundfile as sf
-                        sf.write(audio_path, audio_data, 44100)
-                        return audio_path
-                    elif hasattr(audio_data, 'cpu'):
-                        audio_np = audio_data.cpu().numpy()
-                        import soundfile as sf
-                        sf.write(audio_path, audio_np, 44100)
-                        return audio_path
-        except Exception as e:
-            print(f"通过属性访问音频数据失败: {e}")
-        
-        # 尝试将对象转换为字符串路径
-        try:
-            audio_str = str(audio)
-            if os.path.exists(audio_str):
-                import shutil
-                shutil.copy2(audio_str, audio_path)
+            
+            # 3. LazyAudioMap（ComfyUI-VideoHelperSuite格式）
+            elif hasattr(audio, 'file') and audio.file:
+                if os.path.exists(audio.file):
+                    import shutil
+                    shutil.copy2(audio.file, audio_path)
+                    print(f"[AUDIO] 复制LazyAudioMap文件: {audio.file} -> {audio_path}")
+                    return audio_path
+                else:
+                    print(f"[AUDIO] LazyAudioMap文件不存在: {audio.file}")
+            
+            # 4. 直接音频数据
+            elif isinstance(audio, np.ndarray):
+                import soundfile as sf
+                sf.write(audio_path, audio, 44100)
+                print(f"[AUDIO] 保存numpy音频数据: {len(audio)} 样本")
                 return audio_path
+            
+            # 5. torch张量
+            elif hasattr(audio, 'cpu'):
+                audio_np = audio.cpu().numpy()
+                import soundfile as sf
+                sf.write(audio_path, audio_np, 44100)
+                print(f"[AUDIO] 保存torch音频数据: {len(audio_np)} 样本")
+                return audio_path
+            
+            else:
+                raise ValueError(f"不支持的音频格式: {type(audio)}，支持的格式：str, dict, np.ndarray, torch.Tensor")
+                
         except Exception as e:
-            print(f"尝试字符串路径失败: {e}")
-        
-        raise ValueError(f"不支持的音频格式: {type(audio)}")
+            raise RuntimeError(f"音频处理失败: {e}")
     
     def _merge_audio_video(self, video_path: str, audio_path: str, output_path: str):
         """使用FFmpeg合并音频和视频"""
