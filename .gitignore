@@ -207,3 +207,4 @@ test_multi_file_config.py
 test_pipe_method.py
 test_unified_method.py
 test_file_method.py
+test_fixed_pipe_method.py

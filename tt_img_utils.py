@@ -33,15 +33,23 @@ class TTImgUtils:
         # 优化：批量处理图片尺寸调整
         resized_images = self._batch_resize_images(images, width, height)
         
-        # 暂时禁用管道方法，直接使用文件方法进行测试
-        print("[TEST] 暂时禁用管道方法，使用文件方法进行测试")
+        # 重新启用管道方法进行测试（已修复MP4兼容性问题）
+        print("[PIPE_TEST] 重新启用管道方法进行测试")
         
         if audio is not None:
-            # 有音频：使用分离方法
-            return self.images_to_mp4_with_audio(resized_images, fps, audio, crf)
+            # 有音频：一步完成音视频合成
+            try:
+                return self._create_video_with_audio_pipe(resized_images, temp_path, fps, width, height, crf, audio)
+            except Exception as e:
+                print(f"[FALLBACK] 音视频管道方法失败，回退到分离方法: {e}")
+                return self.images_to_mp4_with_audio(resized_images, fps, audio, crf)
         else:
-            # 无音频：使用文件方法
-            return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
+            # 无音频：只合成视频
+            try:
+                return self._create_video_with_ffmpeg_pipe(resized_images, temp_path, fps, width, height, crf)
+            except Exception as e:
+                print(f"[FALLBACK] 视频管道方法失败，回退到文件方法: {e}")
+                return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
     
     def _batch_resize_images(self, images: List[np.ndarray], target_width: int, target_height: int) -> List[np.ndarray]:
         """批量调整图片尺寸，优化性能"""
@@ -92,17 +100,27 @@ class TTImgUtils:
             
             print(f"[PIPE] 图像数据准备完成，总大小: {len(frame_data)} 字节")
             
-            # 使用FFmpeg管道
+            # 使用FFmpeg管道（修复MP4兼容性问题）
             cmd = [
                 'ffmpeg', '-y',
-                '-f', 'rawvideo',
-                '-pix_fmt', 'rgb24',
-                '-s', f'{width}x{height}',
-                '-r', str(fps),
-                '-i', 'pipe:0',
-                '-c:v', 'libx264',
-                '-crf', str(crf),
-                '-preset', 'ultrafast',
+                '-f', 'rawvideo',           # 输入格式：原始视频
+                '-pix_fmt', 'rgb24',        # 输入像素格式：RGB24
+                '-s', f'{width}x{height}',   # 视频尺寸
+                '-r', str(fps),             # 帧率
+                '-i', 'pipe:0',             # 输入：管道
+                '-c:v', 'libx264',          # 视频编码器：H.264
+                '-crf', str(crf),           # 视频质量
+                '-preset', 'ultrafast',     # 编码预设：最快
+                '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）
+                '-profile:v', 'baseline',   # H.264配置文件：baseline（最大兼容性）
+                '-level', '3.0',            # H.264级别：3.0
+                '-movflags', '+faststart',  # MP4优化：快速启动
+                '-g', '10',                 # 关键帧间隔：10帧
+                '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
+                '-color_range', 'tv',       # 颜色范围
+                '-colorspace', 'bt709',     # 颜色空间
+                '-color_primaries', 'bt709', # 颜色原色
+                '-color_trc', 'bt709',      # 颜色传输特性
                 output_path
             ]
             
@@ -165,22 +183,32 @@ class TTImgUtils:
             
             print(f"[AUDIO_PIPE] 图像数据准备完成，总大小: {len(frame_data)} 字节")
             
-            # 使用FFmpeg一步完成音视频合成
+            # 使用FFmpeg一步完成音视频合成（修复MP4兼容性问题）
             cmd = [
                 'ffmpeg', '-y',
                 '-f', 'rawvideo',           # 输入格式：原始视频
-                '-pix_fmt', 'rgb24',        # 像素格式：RGB24
+                '-pix_fmt', 'rgb24',        # 输入像素格式：RGB24
                 '-s', f'{width}x{height}',   # 视频尺寸
                 '-r', str(fps),             # 帧率
                 '-i', 'pipe:0',             # 视频输入：管道
                 '-i', audio_path,           # 音频输入：文件
                 '-c:v', 'libx264',          # 视频编码器：H.264
                 '-crf', str(crf),           # 视频质量
+                '-preset', 'ultrafast',     # 编码预设：最快
+                '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）
+                '-profile:v', 'baseline',   # H.264配置文件：baseline（最大兼容性）
+                '-level', '3.0',            # H.264级别：3.0
+                '-movflags', '+faststart',  # MP4优化：快速启动
+                '-g', '10',                 # 关键帧间隔：10帧
+                '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
+                '-color_range', 'tv',       # 颜色范围
+                '-colorspace', 'bt709',     # 颜色空间
+                '-color_primaries', 'bt709', # 颜色原色
+                '-color_trc', 'bt709',      # 颜色传输特性
                 '-c:a', 'aac',              # 音频编码器：AAC
                 '-map', '0:v:0',            # 映射视频流
                 '-map', '1:a:0',            # 映射音频流
                 '-shortest',                # 以最短流为准
-                '-preset', 'ultrafast',     # 编码预设：最快
                 output_path
             ]
             
@@ -280,41 +308,9 @@ class TTImgUtils:
             raise RuntimeError(f"视频创建失败: {e}")
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio, crf: int = 19) -> str:
-        """将多张图片转换为带音频的MP4视频（暂时使用文件方法进行测试）"""
-        print("[TEST] 使用文件方法处理音视频合成")
-        
-        # 先生成无音频的MP4
-        video_path = self.images_to_mp4(images, fps, crf)
-        
-        # 如果没有音频，直接返回视频
-        if audio is None:
-            return video_path
-        
-        # 创建带音频的MP4
-        random_suffix = str(uuid.uuid4())[:8]
-        audio_video_path = os.path.join(self.temp_dir, f"temp_video_with_audio_{random_suffix}.mp4")
-        
-        try:
-            # 处理音频数据
-            audio_path = self._process_audio_input(audio)
-            
-            # 使用FFmpeg合成音频和视频
-            self._merge_audio_video(video_path, audio_path, audio_video_path)
-            
-            # 清理临时音频文件
-            if audio_path and os.path.exists(audio_path):
-                os.remove(audio_path)
-            
-            # 清理原始视频文件
-            if os.path.exists(video_path):
-                os.remove(video_path)
-            
-            return audio_video_path
-            
-        except Exception as e:
-            print(f"音频合成失败: {e}")
-            # 如果音频合成失败，返回原始视频
-            return video_path
+        """将多张图片转换为带音频的MP4视频（现在调用统一方法）"""
+        print("[COMPAT] 调用兼容性方法，将转发到统一方法")
+        return self.images_to_mp4(images, fps, crf, audio)
     
     def _process_audio_input(self, audio) -> str:
         """简化的音频输入处理（类似ComfyUI-VideoHelperSuite）"""
