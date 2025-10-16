@@ -399,7 +399,6 @@ class TTImgEncV2Node:
             # 验证每个数据包的Magic标识符
             offset = 0
             for i, packet in enumerate(packets):
-                print(f"[V2][ENC] 验证数据包 {i+1}: 偏移 {offset}, Magic: {packet[:4]}")
                 offset += len(packet)
             
             return bytes(combined_packet)
@@ -500,15 +499,12 @@ class TTImgEncV2Node:
         # 验证数据包中的Magic标识符
         if len(data_bytes) >= 4:
             first_magic = data_bytes[:4]
-            print(f"[V2][ENC] 数据包第一个Magic: {first_magic}")
             
             # 查找所有Magic标识符
             magic_count = 0
             for i in range(0, len(data_bytes) - 3):
                 if data_bytes[i:i+4] == b'TTv2':
                     magic_count += 1
-                    print(f"[V2][ENC] 找到Magic标识符 {magic_count} 在偏移 {i}")
-            print(f"[V2][ENC] 总共找到 {magic_count} 个Magic标识符")
 
         # 确定起始行
         if skip_watermark_area:
@@ -537,7 +533,6 @@ class TTImgEncV2Node:
             if data_bytes[i:i+4] == b'TTv2':
                 magic_positions.append(i)
         
-        print(f"[V2][ENC] 找到 {len(magic_positions)} 个文件，Magic位置: {magic_positions}")
         
         # 按文件逐个写入
         for file_index, magic_pos in enumerate(magic_positions):
@@ -552,14 +547,12 @@ class TTImgEncV2Node:
                 file_end = len(data_bytes)
             
             file_data = data_bytes[magic_pos:file_end]
-            print(f"[V2][ENC] 文件 {file_index + 1} 数据长度: {len(file_data)} 字节")
             
             # 确保当前文件从行首开始
             if current_col != 0:
                 # 如果不在行首，跳到下一行的行首
                 current_row += 1
                 current_col = 0
-                print(f"[V2][ENC] 文件 {file_index + 1} 跳到下一行行首，当前行: {current_row}")
             
             if current_row >= height:
                 print(f"[V2][ENC] 警告：图片高度不足，无法写入所有文件")
@@ -572,7 +565,6 @@ class TTImgEncV2Node:
                 remaining_bytes_in_row = (width - current_col) * 3
                 bytes_to_write = min(len(file_data) - file_data_index, remaining_bytes_in_row)
                 
-                print(f"[V2][ENC] 文件 {file_index + 1} 在第 {current_row} 行写入 {bytes_to_write} 字节，从列 {current_col} 开始")
                 
                 # 写入当前行的数据
                 for i in range(bytes_to_write):
@@ -601,9 +593,7 @@ class TTImgEncV2Node:
                     print(f"[V2][ENC] 警告：文件 {file_index + 1} 数据未完全写入，图片空间不足")
                     break
             
-            print(f"[V2][ENC] 文件 {file_index + 1} 写入完成，当前位置: 行{current_row}, 列{current_col}")
         
-        print(f"[V2][ENC] 多文件数据包写入完成，总共使用行数: {current_row - start_row + 1}")
         
         # 根据skip_watermark_area配置决定是否填充随机噪声
         if skip_watermark_area and start_row > 0:
@@ -651,7 +641,6 @@ class TTImgEncV2Node:
         packet.extend(inner)  # 内部数据
         
         print(f"[V2][ENC] 完整数据包长度: {len(packet)} 字节")
-        print(f"[V2][ENC] 数据包Magic: {packet[:4]}")
         
         return bytes(packet)
 

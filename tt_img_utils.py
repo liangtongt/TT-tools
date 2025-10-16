@@ -535,10 +535,6 @@ class TTImgUtils:
             larger_image = self.create_storage_image(required_size)
             return self.embed_file_data_in_image(larger_image, file_header)
         
-        print(
-            f"嵌入文件数据: {len(file_header)} 字节到 {height}x{width} 图片（写入行: {start_row}~{end_row-1}，"
-            f"顶部预留≈20%，底部预留≈20%）"
-        )
         
         # 复制图片
         embedded_image = image.copy()
@@ -610,7 +606,6 @@ class TTImgUtils:
         """创建存储图片并嵌入文件（通用版本）"""
         # 计算所需的图片尺寸
         required_size = self.calculate_required_image_size(file_header)
-        print(f"文件大小: {len(file_header)} 字节，需要图片尺寸: {required_size}x{required_size}")
         
         # 创建纯色存储图片（最小尺寸，最大存储效率）
         storage_image = self.create_storage_image(required_size)
