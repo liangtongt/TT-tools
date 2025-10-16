@@ -33,8 +33,7 @@ class TTImgUtils:
         # 优化：批量处理图片尺寸调整
         resized_images = self._batch_resize_images(images, width, height)
         
-        # 重新启用管道方法进行测试（已修复MP4兼容性问题）
-        print("[PIPE_TEST] 重新启用管道方法进行测试")
+        # 使用管道方法（已修复MP4兼容性问题）
         
         if audio is not None:
             # 有音频：一步完成音视频合成
@@ -68,8 +67,6 @@ class TTImgUtils:
     def _create_video_with_ffmpeg_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
         """使用FFmpeg管道创建视频（类似ComfyUI-VideoHelperSuite，避免中间文件）"""
         try:
-            print(f"[PIPE] 开始使用FFmpeg管道创建视频，帧数: {len(images)}, 尺寸: {width}x{height}, FPS: {fps}, CRF: {crf}")
-            
             # 准备图像数据
             frame_data = b''
             for i, img in enumerate(images):
@@ -94,11 +91,6 @@ class TTImgUtils:
                 # 转换为字节数据
                 frame_bytes = img_rgb.tobytes()
                 frame_data += frame_bytes
-                
-                if i % 10 == 0:  # 每10帧打印一次进度
-                    print(f"[PIPE] 已处理 {i+1}/{len(images)} 帧")
-            
-            print(f"[PIPE] 图像数据准备完成，总大小: {len(frame_data)} 字节")
             
             # 使用FFmpeg管道（修复MP4兼容性问题）
             cmd = [
@@ -124,34 +116,26 @@ class TTImgUtils:
                 output_path
             ]
             
-            print(f"[PIPE] FFmpeg命令: {' '.join(cmd)}")
-            
             # 通过管道传递数据
             process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate(input=frame_data)
             
             if process.returncode == 0:
-                print("[PIPE] 成功使用FFmpeg管道创建视频")
                 return output_path
             else:
-                print(f"[PIPE] FFmpeg管道创建视频失败: {stderr.decode()}")
+                print(f"FFmpeg管道创建视频失败: {stderr.decode()}")
                 raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
                 
         except FileNotFoundError:
-            print("[PIPE] FFmpeg不可用")
             raise RuntimeError("无法创建视频：FFmpeg不可用")
         except Exception as e:
-            print(f"[PIPE] FFmpeg管道创建视频异常: {e}")
             raise RuntimeError(f"视频创建失败: {e}")
 
     def _create_video_with_audio_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19, audio=None) -> str:
         """使用FFmpeg管道一步完成音视频合成（类似ComfyUI-VideoHelperSuite）"""
         try:
-            print(f"[AUDIO_PIPE] 开始一步完成音视频合成，帧数: {len(images)}, 尺寸: {width}x{height}, FPS: {fps}, CRF: {crf}")
-            
             # 处理音频输入
             audio_path = self._process_audio_input(audio)
-            print(f"[AUDIO_PIPE] 音频文件准备完成: {audio_path}")
             
             # 准备图像数据
             frame_data = b''
@@ -177,11 +161,6 @@ class TTImgUtils:
                 # 转换为字节数据
                 frame_bytes = img_rgb.tobytes()
                 frame_data += frame_bytes
-                
-                if i % 10 == 0:  # 每10帧打印一次进度
-                    print(f"[AUDIO_PIPE] 已处理 {i+1}/{len(images)} 帧")
-            
-            print(f"[AUDIO_PIPE] 图像数据准备完成，总大小: {len(frame_data)} 字节")
             
             # 使用FFmpeg一步完成音视频合成（修复MP4兼容性问题）
             cmd = [
@@ -212,33 +191,27 @@ class TTImgUtils:
                 output_path
             ]
             
-            print(f"[AUDIO_PIPE] FFmpeg命令: {' '.join(cmd)}")
-            
             # 通过管道传递数据
             process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate(input=frame_data)
             
             if process.returncode == 0:
-                print("[AUDIO_PIPE] 成功一步完成音视频合成")
                 return output_path
             else:
-                print(f"[AUDIO_PIPE] FFmpeg音视频合成失败: {stderr.decode()}")
+                print(f"FFmpeg音视频合成失败: {stderr.decode()}")
                 raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
                 
         except FileNotFoundError:
-            print("[AUDIO_PIPE] FFmpeg不可用")
             raise RuntimeError("无法创建音视频：FFmpeg不可用")
         except Exception as e:
-            print(f"[AUDIO_PIPE] FFmpeg音视频合成异常: {e}")
             raise RuntimeError(f"音视频合成失败: {e}")
         finally:
             # 清理音频文件
             try:
                 if 'audio_path' in locals() and os.path.exists(audio_path):
                     os.remove(audio_path)
-                    print(f"[AUDIO_PIPE] 已清理音频文件: {audio_path}")
-            except Exception as e:
-                print(f"[AUDIO_PIPE] 清理音频文件失败: {e}")
+            except Exception:
+                pass
 
     def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
         """使用FFmpeg直接创建视频（备用方法）"""
@@ -294,22 +267,17 @@ class TTImgUtils:
             os.rmdir(temp_dir)
             
             if result.returncode == 0:
-                print("成功使用FFmpeg创建视频")
                 return output_path
             else:
-                print(f"FFmpeg创建视频失败: {result.stderr}")
                 raise RuntimeError(f"FFmpeg错误: {result.stderr}")
                 
         except FileNotFoundError:
-            print("FFmpeg不可用")
-            raise RuntimeError("无法创建视频：OpenCV和FFmpeg都不可用")
+            raise RuntimeError("无法创建视频：FFmpeg不可用")
         except Exception as e:
-            print(f"FFmpeg创建视频异常: {e}")
             raise RuntimeError(f"视频创建失败: {e}")
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio, crf: int = 19) -> str:
         """将多张图片转换为带音频的MP4视频（现在调用统一方法）"""
-        print("[COMPAT] 调用兼容性方法，将转发到统一方法")
         return self.images_to_mp4(images, fps, crf, audio)
     
     def _process_audio_input(self, audio) -> str:
@@ -322,7 +290,6 @@ class TTImgUtils:
             if isinstance(audio, str) and os.path.exists(audio):
                 import shutil
                 shutil.copy2(audio, audio_path)
-                print(f"[AUDIO] 复制音频文件: {audio} -> {audio_path}")
                 return audio_path
             
             # 2. ComfyUI标准格式（最常见）
@@ -335,7 +302,6 @@ class TTImgUtils:
                 
                 import soundfile as sf
                 sf.write(audio_path, audio_data, sample_rate)
-                print(f"[AUDIO] 保存ComfyUI音频数据: {len(audio_data)} 样本, {sample_rate}Hz")
                 return audio_path
             
             # 3. LazyAudioMap（ComfyUI-VideoHelperSuite格式）
@@ -343,16 +309,12 @@ class TTImgUtils:
                 if os.path.exists(audio.file):
                     import shutil
                     shutil.copy2(audio.file, audio_path)
-                    print(f"[AUDIO] 复制LazyAudioMap文件: {audio.file} -> {audio_path}")
                     return audio_path
-                else:
-                    print(f"[AUDIO] LazyAudioMap文件不存在: {audio.file}")
             
             # 4. 直接音频数据
             elif isinstance(audio, np.ndarray):
                 import soundfile as sf
                 sf.write(audio_path, audio, 44100)
-                print(f"[AUDIO] 保存numpy音频数据: {len(audio)} 样本")
                 return audio_path
             
             # 5. torch张量
@@ -360,7 +322,6 @@ class TTImgUtils:
                 audio_np = audio.cpu().numpy()
                 import soundfile as sf
                 sf.write(audio_path, audio_np, 44100)
-                print(f"[AUDIO] 保存torch音频数据: {len(audio_np)} 样本")
                 return audio_path
             
             else:
