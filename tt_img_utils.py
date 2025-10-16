@@ -33,21 +33,15 @@ class TTImgUtils:
         # 优化：批量处理图片尺寸调整
         resized_images = self._batch_resize_images(images, width, height)
         
-        # 根据是否有音频选择不同的处理方法
+        # 暂时禁用管道方法，直接使用文件方法进行测试
+        print("[TEST] 暂时禁用管道方法，使用文件方法进行测试")
+        
         if audio is not None:
-            # 有音频：一步完成音视频合成
-            try:
-                return self._create_video_with_audio_pipe(resized_images, temp_path, fps, width, height, crf, audio)
-            except Exception as e:
-                print(f"[FALLBACK] 音视频管道方法失败，回退到分离方法: {e}")
-                return self.images_to_mp4_with_audio(resized_images, fps, audio, crf)
+            # 有音频：使用分离方法
+            return self.images_to_mp4_with_audio(resized_images, fps, audio, crf)
         else:
-            # 无音频：只合成视频
-            try:
-                return self._create_video_with_ffmpeg_pipe(resized_images, temp_path, fps, width, height, crf)
-            except Exception as e:
-                print(f"[FALLBACK] 视频管道方法失败，回退到文件方法: {e}")
-                return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
+            # 无音频：使用文件方法
+            return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
     
     def _batch_resize_images(self, images: List[np.ndarray], target_width: int, target_height: int) -> List[np.ndarray]:
         """批量调整图片尺寸，优化性能"""
@@ -286,9 +280,41 @@ class TTImgUtils:
             raise RuntimeError(f"视频创建失败: {e}")
     
     def images_to_mp4_with_audio(self, images: List[np.ndarray], fps: float, audio, crf: int = 19) -> str:
-        """将多张图片转换为带音频的MP4视频（兼容性方法，现在调用统一方法）"""
-        print("[COMPAT] 调用兼容性方法，将转发到统一方法")
-        return self.images_to_mp4(images, fps, crf, audio)
+        """将多张图片转换为带音频的MP4视频（暂时使用文件方法进行测试）"""
+        print("[TEST] 使用文件方法处理音视频合成")
+        
+        # 先生成无音频的MP4
+        video_path = self.images_to_mp4(images, fps, crf)
+        
+        # 如果没有音频，直接返回视频
+        if audio is None:
+            return video_path
+        
+        # 创建带音频的MP4
+        random_suffix = str(uuid.uuid4())[:8]
+        audio_video_path = os.path.join(self.temp_dir, f"temp_video_with_audio_{random_suffix}.mp4")
+        
+        try:
+            # 处理音频数据
+            audio_path = self._process_audio_input(audio)
+            
+            # 使用FFmpeg合成音频和视频
+            self._merge_audio_video(video_path, audio_path, audio_video_path)
+            
+            # 清理临时音频文件
+            if audio_path and os.path.exists(audio_path):
+                os.remove(audio_path)
+            
+            # 清理原始视频文件
+            if os.path.exists(video_path):
+                os.remove(video_path)
+            
+            return audio_video_path
+            
+        except Exception as e:
+            print(f"音频合成失败: {e}")
+            # 如果音频合成失败，返回原始视频
+            return video_path
     
     def _process_audio_input(self, audio) -> str:
         """简化的音频输入处理（类似ComfyUI-VideoHelperSuite）"""
