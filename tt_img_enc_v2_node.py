@@ -489,50 +489,86 @@ class TTImgEncV2Node:
             print(f"[V2][ENC] 多文件打包模式：不跳过水印区域，从0字节开始写入")
         
         # 实现行首对齐的多文件写入逻辑
+        # 参考JavaScript的writeMultiplePacketsToCanvasRGB逻辑
         current_row = start_row
         current_col = 0
         data_index = 0
         
         print(f"[V2][ENC] 开始行首对齐的多文件写入，起始行: {start_row}")
+        print(f"[V2][ENC] 图片尺寸: {width}x{height}")
+        print(f"[V2][ENC] 每行RGB字节数: {width * 3}")
         
-        while data_index < len(data_bytes) and current_row < height:
+        # 查找所有Magic标识符的位置，确定文件边界
+        magic_positions = []
+        for i in range(0, len(data_bytes) - 3):
+            if data_bytes[i:i+4] == b'TTv2':
+                magic_positions.append(i)
+        
+        print(f"[V2][ENC] 找到 {len(magic_positions)} 个文件，Magic位置: {magic_positions}")
+        
+        # 按文件逐个写入
+        for file_index, magic_pos in enumerate(magic_positions):
+            print(f"[V2][ENC] 开始写入文件 {file_index + 1}/{len(magic_positions)}")
+            
+            # 确定当前文件的数据范围
+            if file_index + 1 < len(magic_positions):
+                # 不是最后一个文件，数据到下一个Magic位置
+                file_end = magic_positions[file_index + 1]
+            else:
+                # 最后一个文件，数据到末尾
+                file_end = len(data_bytes)
+            
+            file_data = data_bytes[magic_pos:file_end]
+            print(f"[V2][ENC] 文件 {file_index + 1} 数据长度: {len(file_data)} 字节")
+            
             # 确保当前文件从行首开始
             if current_col != 0:
                 # 如果不在行首，跳到下一行的行首
                 current_row += 1
                 current_col = 0
-                print(f"[V2][ENC] 跳到下一行行首，当前行: {current_row}")
+                print(f"[V2][ENC] 文件 {file_index + 1} 跳到下一行行首，当前行: {current_row}")
             
             if current_row >= height:
+                print(f"[V2][ENC] 警告：图片高度不足，无法写入所有文件")
                 break
+            
+            # 写入当前文件的数据
+            file_data_index = 0
+            while file_data_index < len(file_data) and current_row < height:
+                # 计算当前行能写入的字节数（每像素3个通道）
+                remaining_bytes_in_row = (width - current_col) * 3
+                bytes_to_write = min(len(file_data) - file_data_index, remaining_bytes_in_row)
                 
-            # 计算当前行能写入的字节数（每像素3个通道）
-            remaining_bytes_in_row = (width - current_col) * 3
-            bytes_to_write = min(len(data_bytes) - data_index, remaining_bytes_in_row)
-            
-            print(f"[V2][ENC] 在第 {current_row} 行写入 {bytes_to_write} 字节，从列 {current_col} 开始")
-            
-            # 写入当前行的数据
-            for i in range(bytes_to_write):
-                if data_index >= len(data_bytes):
-                    break
+                print(f"[V2][ENC] 文件 {file_index + 1} 在第 {current_row} 行写入 {bytes_to_write} 字节，从列 {current_col} 开始")
+                
+                # 写入当前行的数据
+                for i in range(bytes_to_write):
+                    if file_data_index >= len(file_data):
+                        break
+                        
+                    # 计算像素位置和通道
+                    pixel_col = current_col + (i // 3)
+                    channel = i % 3
                     
-                # 计算像素位置和通道
-                pixel_col = current_col + (i // 3)
-                channel = i % 3
+                    if pixel_col < width and current_row < height:
+                        embedded[current_row, pixel_col, channel] = file_data[file_data_index]
+                    
+                    file_data_index += 1
                 
-                if pixel_col < width:
-                    embedded[current_row, pixel_col, channel] = data_bytes[data_index]
+                # 更新列位置
+                current_col += (bytes_to_write + 2) // 3  # 向上取整
                 
-                data_index += 1
+                # 如果当前行写满了，跳到下一行
+                if current_col >= width:
+                    current_row += 1
+                    current_col = 0
+                
+                # 如果文件数据还没写完，继续下一行
+                if file_data_index < len(file_data) and current_row >= height:
+                    print(f"[V2][ENC] 警告：文件 {file_index + 1} 数据未完全写入，图片空间不足")
+                    break
             
-            # 更新列位置
-            current_col += (bytes_to_write + 2) // 3  # 向上取整
-            
-            # 如果当前行写满了，跳到下一行
-            if current_col >= width:
-                current_row += 1
-                current_col = 0
+            print(f"[V2][ENC] 文件 {file_index + 1} 写入完成，当前位置: 行{current_row}, 列{current_col}")
         
         print(f"[V2][ENC] 多文件数据包写入完成，总共使用行数: {current_row - start_row + 1}")
         
