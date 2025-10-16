@@ -198,3 +198,7 @@ test_force_skip_watermark.png
 test_large_smart_watermark.png
 test_no_skip_watermark.png
 test_smart_watermark.png
+test_multi_file_no_skip.png
+test_rgb_no_skip.png
+test_rgb_simple.png
+test_rgb_with_skip.png
