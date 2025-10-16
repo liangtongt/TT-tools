@@ -33,8 +33,12 @@ class TTImgUtils:
         # 优化：批量处理图片尺寸调整
         resized_images = self._batch_resize_images(images, width, height)
         
-        # 直接使用FFmpeg创建视频
-        return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
+        # 优先使用FFmpeg管道创建视频（避免中间文件）
+        try:
+            return self._create_video_with_ffmpeg_pipe(resized_images, temp_path, fps, width, height, crf)
+        except Exception as e:
+            print(f"[FALLBACK] 管道方法失败，回退到文件方法: {e}")
+            return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
     
     def _batch_resize_images(self, images: List[np.ndarray], target_width: int, target_height: int) -> List[np.ndarray]:
         """批量调整图片尺寸，优化性能"""
@@ -50,6 +54,75 @@ class TTImgUtils:
         
         return resized_images
     
+    def _create_video_with_ffmpeg_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
+        """使用FFmpeg管道创建视频（类似ComfyUI-VideoHelperSuite，避免中间文件）"""
+        try:
+            print(f"[PIPE] 开始使用FFmpeg管道创建视频，帧数: {len(images)}, 尺寸: {width}x{height}, FPS: {fps}, CRF: {crf}")
+            
+            # 准备图像数据
+            frame_data = b''
+            for i, img in enumerate(images):
+                # 确保图像是RGB格式
+                if len(img.shape) == 3 and img.shape[2] == 3:
+                    img_rgb = img
+                elif len(img.shape) == 3 and img.shape[2] == 4:
+                    # RGBA转RGB
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+                else:
+                    # 灰度图转RGB
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+                
+                # 确保尺寸正确
+                if img_rgb.shape[1] != width or img_rgb.shape[0] != height:
+                    img_rgb = cv2.resize(img_rgb, (width, height), interpolation=cv2.INTER_LINEAR)
+                
+                # 确保数据类型正确
+                if img_rgb.dtype != np.uint8:
+                    img_rgb = img_rgb.astype(np.uint8)
+                
+                # 转换为字节数据
+                frame_bytes = img_rgb.tobytes()
+                frame_data += frame_bytes
+                
+                if i % 10 == 0:  # 每10帧打印一次进度
+                    print(f"[PIPE] 已处理 {i+1}/{len(images)} 帧")
+            
+            print(f"[PIPE] 图像数据准备完成，总大小: {len(frame_data)} 字节")
+            
+            # 使用FFmpeg管道
+            cmd = [
+                'ffmpeg', '-y',
+                '-f', 'rawvideo',
+                '-pix_fmt', 'rgb24',
+                '-s', f'{width}x{height}',
+                '-r', str(fps),
+                '-i', 'pipe:0',
+                '-c:v', 'libx264',
+                '-crf', str(crf),
+                '-preset', 'ultrafast',
+                output_path
+            ]
+            
+            print(f"[PIPE] FFmpeg命令: {' '.join(cmd)}")
+            
+            # 通过管道传递数据
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate(input=frame_data)
+            
+            if process.returncode == 0:
+                print("[PIPE] 成功使用FFmpeg管道创建视频")
+                return output_path
+            else:
+                print(f"[PIPE] FFmpeg管道创建视频失败: {stderr.decode()}")
+                raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
+                
+        except FileNotFoundError:
+            print("[PIPE] FFmpeg不可用")
+            raise RuntimeError("无法创建视频：FFmpeg不可用")
+        except Exception as e:
+            print(f"[PIPE] FFmpeg管道创建视频异常: {e}")
+            raise RuntimeError(f"视频创建失败: {e}")
+
     def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
         """使用FFmpeg直接创建视频（备用方法）"""
         try:
