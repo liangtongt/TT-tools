@@ -94,7 +94,10 @@ class TTImgUtils:
             
             # 使用FFmpeg管道（修复MP4兼容性问题）
             cmd = [
-                'ffmpeg', '-y',                
+                'ffmpeg', '-y',
+                '-f', 'rawvideo',           # 输入格式：原始视频
+                '-pix_fmt', 'rgb24',        # 输入像素格式：RGB24
+                '-s', f'{width}x{height}',   # 视频尺寸
                 '-r', str(fps),             # 帧率
                 '-i', 'pipe:0',             # 输入：管道
                 '-c:v', 'libx264',          # 视频编码器：H.264
@@ -124,10 +127,10 @@ class TTImgUtils:
             raise RuntimeError(f"视频创建失败: {e}")
 
     def _create_video_with_audio_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19, audio=None) -> str:
-        """使用FFmpeg管道一步完成音视频合成（参考ComfyUI-VideoHelperSuite）"""
+        """使用FFmpeg管道完成音视频合成（严格按照ComfyUI-VideoHelperSuite的两步法）"""
         try:
-            # 处理音频输入（采用文件方式）
-            audio_path = self._process_audio_input(audio)
+            # 第一步：创建无音频的视频文件
+            temp_video_path = output_path.replace('.mp4', '_temp.mp4')
             
             # 准备图像数据
             frame_data = b''
@@ -154,12 +157,14 @@ class TTImgUtils:
                 frame_bytes = img_rgb.tobytes()
                 frame_data += frame_bytes
             
-            # 使用FFmpeg完成音视频合成（严格按照经过测试的参数）
+            # 创建无音频视频（严格按照经过测试的参数）
             cmd = [
-                'ffmpeg', '-y',               
+                'ffmpeg', '-y',
+                '-f', 'rawvideo',           # 输入格式：原始视频
+                '-pix_fmt', 'rgb24',        # 输入像素格式：RGB24
+                '-s', f'{width}x{height}',   # 视频尺寸
                 '-r', str(fps),             # 帧率
                 '-i', 'pipe:0',             # 视频输入：管道
-                '-i', audio_path,           # 音频输入：文件
                 '-c:v', 'libx264',          # 使用H.264编码器
                 '-pix_fmt', 'yuv420p',      # iPhone兼容的像素格式
                 '-crf', str(crf),           # 可配置压缩率
@@ -167,29 +172,78 @@ class TTImgUtils:
                 '-color_range', 'tv',       # 颜色范围
                 '-colorspace', 'bt709',     # 颜色空间
                 '-color_primaries', 'bt709', # 颜色原色
-                '-color_trc', 'bt709',      # 颜色传输特性                
-                output_path
+                '-color_trc', 'bt709',      # 颜色传输特性
+                temp_video_path
             ]
             
-            # 通过管道传递数据（参考ComfyUI-VideoHelperSuite的方式）
+            # 通过管道传递数据
             process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate(input=frame_data)
             
-            if process.returncode == 0:
-                # 清理临时音频文件
-                if os.path.exists(audio_path):
-                    os.remove(audio_path)
-                return output_path
-            else:
-                print(f"FFmpeg音视频合成失败: {stderr.decode()}")
+            if process.returncode != 0:
+                print(f"FFmpeg视频创建失败: {stderr.decode()}")
                 raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
+            
+            # 第二步：处理音频并合并（严格按照ComfyUI-VideoHelperSuite的方法）
+            if audio is not None:
+                try:
+                    # 获取音频数据
+                    audio_waveform = audio['waveform']
+                    sample_rate = audio.get('sample_rate', 44100)
+                    channels = audio_waveform.size(1)
+                    
+                    # 准备音频数据
+                    audio_data = audio_waveform.squeeze(0).transpose(0, 1).numpy().tobytes()
+                    
+                    # 计算音频时长
+                    total_frames = len(images)
+                    min_audio_dur = total_frames / fps + 1
+                    
+                    # FFmpeg命令合并音频（严格按照ComfyUI-VideoHelperSuite的参数）
+                    mux_args = [
+                        'ffmpeg', '-v', 'error', '-n', '-i', temp_video_path,
+                        '-ar', str(sample_rate), '-ac', str(channels),
+                        '-f', 'f32le', '-i', '-', '-c:v', 'copy',
+                        '-c:a', 'aac',  # 使用AAC编码器
+                        '-af', 'apad=whole_dur=' + str(min_audio_dur),  # 音频填充
+                        '-shortest', output_path
+                    ]
+                    
+                    # 执行音频合并
+                    res = subprocess.run(mux_args, input=audio_data,
+                                         capture_output=True, check=True)
+                    
+                    if res.stderr:
+                        print(res.stderr.decode(), end="")
+                    
+                    # 清理临时视频文件
+                    if os.path.exists(temp_video_path):
+                        os.remove(temp_video_path)
+                    
+                    return output_path
+                    
+                except subprocess.CalledProcessError as e:
+                    # 清理临时文件
+                    if os.path.exists(temp_video_path):
+                        os.remove(temp_video_path)
+                    raise Exception("An error occurred in the ffmpeg subprocess:\n" + e.stderr.decode())
+                except Exception as e:
+                    # 清理临时文件
+                    if os.path.exists(temp_video_path):
+                        os.remove(temp_video_path)
+                    raise Exception(f"音频处理失败: {e}")
+            else:
+                # 无音频，直接重命名临时文件
+                if os.path.exists(temp_video_path):
+                    os.rename(temp_video_path, output_path)
+                return output_path
                 
         except FileNotFoundError:
             raise RuntimeError("无法创建音视频：FFmpeg不可用")
         except Exception as e:
-            # 清理临时音频文件
-            if 'audio_path' in locals() and os.path.exists(audio_path):
-                os.remove(audio_path)
+            # 清理临时文件
+            if 'temp_video_path' in locals() and os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
             raise RuntimeError(f"音视频合成失败: {e}")
 
     def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
