@@ -104,7 +104,7 @@ class TTImgUtils:
                 '-crf', str(crf),           # 视频质量
                 '-preset', 'ultrafast',     # 编码预设：最快
                 '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）
-                '-profile:v', 'baseline',   # H.264配置文件：baseline（最大兼容性）
+                '-profile:v', 'main' if crf == 0 else 'baseline',   # H.264配置文件：main用于无损，baseline用于有损
                 '-level', '3.0',            # H.264级别：3.0
                 '-movflags', '+faststart',  # MP4优化：快速启动
                 '-g', '10',                 # 关键帧间隔：10帧
@@ -187,7 +187,7 @@ class TTImgUtils:
                 '-crf', str(crf),           # 视频质量
                 '-preset', 'ultrafast',     # 编码预设：最快
                 '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）
-                '-profile:v', 'baseline',   # H.264配置文件：baseline（最大兼容性）
+                '-profile:v', 'main' if crf == 0 else 'baseline',   # H.264配置文件：main用于无损，baseline用于有损
                 '-level', '3.0',            # H.264级别：3.0
                 '-movflags', '+faststart',  # MP4优化：快速启动
                 '-g', '10',                 # 关键帧间隔：10帧
@@ -203,19 +203,11 @@ class TTImgUtils:
                 output_path
             ]
             
-            # 执行FFmpeg命令（使用两个管道）
-            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            # 写入视频数据
-            process.stdin.write(frame_data)
-            process.stdin.close()
-            
-            # 等待完成
-            stderr = process.stderr.read()
-            process.wait()
-            
-            if process.returncode != 0:
-                raise Exception(f"FFmpeg音视频合成失败: {stderr.decode()}")
+            # 执行FFmpeg命令（参考ComfyUI-VideoHelperSuite的方式）
+            try:
+                res = subprocess.run(cmd, input=frame_data, capture_output=True, check=True)
+            except subprocess.CalledProcessError as e:
+                raise Exception(f"FFmpeg音视频合成失败: {e.stderr.decode()}")
             
             return output_path
                 
