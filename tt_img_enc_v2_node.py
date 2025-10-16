@@ -431,6 +431,8 @@ class TTImgEncV2Node:
         直接将字节数据嵌入到图片中（用于多文件数据包）
         参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
         注意：多文件数据包不添加32位长度前缀，直接写入多个独立的数据包
+        
+        修复：确保第一个文件在顶部15%区域内，以便小程序能够正确扫描
         """
         height, width = image.shape[0], image.shape[1]
         embedded = image.copy()
@@ -455,13 +457,15 @@ class TTImgEncV2Node:
             print(f"[V2][ENC] 总共找到 {magic_count} 个Magic标识符")
 
         channels = embedded.shape[2]
+        
+        # 修复：多文件打包时，确保第一个文件在顶部15%区域内
+        # 小程序扫描策略：优先扫描顶部15%区域（向后兼容）
         if skip_watermark_area:
-            top_skip = int(np.floor(height * 0.06))
-            bottom_skip = 0
-            start_row = top_skip
-            end_row = height - bottom_skip
-            usable_rows = max(0, end_row - start_row)
-            total_capacity_bits = usable_rows * width * channels * bits_per_channel
+            # 对于多文件打包，不使用跳过水印区域，确保第一个文件在顶部
+            print(f"[V2][ENC] 多文件打包：禁用跳过水印区域，确保第一个文件在顶部15%区域内")
+            start_row = 0
+            end_row = height
+            total_capacity_bits = height * width * channels * bits_per_channel
         else:
             start_row = 0
             end_row = height
