@@ -382,23 +382,21 @@ class TTImgEncV2Node:
         为多文件数据包创建存储图片，直接将数据包写入RGB通道
         参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
         
-        修改：多文件打包时忽略水印区域，使用整张图片的容量
+        修改：实现行首对齐的多文件写入，根据skip_watermark_area配置计算容量
         """
         print(f"[V2][ENC] 创建多文件存储图片，数据包大小: {len(combined_packet)} 字节")
         
-        # 计算最小尺寸，多文件打包时使用整张图片的容量
-        # 多文件数据包不需要额外的长度前缀，直接使用数据包大小
+        # 计算最小尺寸，使用RGB字节流方式（每像素3字节）
         bytes_needed = len(combined_packet)
-        bits_needed = bytes_needed * 8
         
-        # 每像素可用位数：3 通道(RGB) * bits_per_channel
-        capacity_per_pixel = 3 * bits_per_channel
+        # 每像素可用字节数：3 通道(RGB)
+        bytes_per_pixel = 3
         
-        # 修改：多文件打包时根据skip_watermark_area配置计算容量
+        # 根据skip_watermark_area配置计算容量
         if skip_watermark_area:
             # 跳过水印区域时，需要考虑可用区域
             # 连续近似：仅跳过顶部6%，usable ≈ 0.94 * S^2
-            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.94))))
+            side0 = int(np.ceil(np.sqrt(bytes_needed / float(bytes_per_pixel * 0.94))))
             side_length = max(64, side0)
             side_length = ((side_length + 3) // 4) * 4
             # 离散校验
@@ -407,14 +405,14 @@ class TTImgEncV2Node:
                 bottom_skip = 0
                 available_height = side_length - top_skip - bottom_skip
                 available_pixels = max(0, available_height) * side_length
-                available_bits = available_pixels * capacity_per_pixel
-                if available_bits >= bits_needed:
+                available_bytes = available_pixels * bytes_per_pixel
+                if available_bytes >= bytes_needed:
                     break
                 side_length += 4
             print(f"[V2][ENC] 多文件打包模式：跳过水印区域，计算所需图片尺寸: {side_length}x{side_length}")
         else:
             # 不跳过水印区域时，使用整张图片的容量
-            required_pixels = int(np.ceil(bits_needed / float(capacity_per_pixel)))
+            required_pixels = int(np.ceil(bytes_needed / float(bytes_per_pixel)))
             side_length = int(np.ceil(np.sqrt(required_pixels)))
             side_length = max(64, side_length)
             side_length = ((side_length + 3) // 4) * 4
@@ -457,18 +455,14 @@ class TTImgEncV2Node:
         """
         直接将字节数据嵌入到图片中（用于多文件数据包）
         参考JS版本的writeMultiplePacketsToCanvasRGB逻辑
-        注意：多文件数据包不添加32位长度前缀，直接写入多个独立的数据包
+        实现行首对齐的多文件写入，每个文件都从行首开始
         
-        修改：多文件打包时忽略水印区域，直接从0字节开始写入
+        修改：多文件打包时根据skip_watermark_area配置决定是否跳过水印区域
         """
         height, width = image.shape[0], image.shape[1]
         embedded = image.copy()
 
-        # 多文件数据包：直接写入数据，不添加长度前缀
-        data_binary = ''.join(format(byte, '08b') for byte in data_bytes)
-        full_binary = data_binary  # 不添加长度前缀
-        
-        print(f"[V2][ENC] 多文件数据包嵌入: 原始数据 {len(data_bytes)} 字节，二进制长度 {len(full_binary)} 位")
+        print(f"[V2][ENC] 多文件数据包嵌入: 原始数据 {len(data_bytes)} 字节")
         
         # 验证数据包中的Magic标识符
         if len(data_bytes) >= 4:
@@ -483,59 +477,70 @@ class TTImgEncV2Node:
                     print(f"[V2][ENC] 找到Magic标识符 {magic_count} 在偏移 {i}")
             print(f"[V2][ENC] 总共找到 {magic_count} 个Magic标识符")
 
-        channels = embedded.shape[2]
-        
-        # 修改：多文件打包时根据skip_watermark_area配置决定是否跳过水印区域
+        # 确定起始行
         if skip_watermark_area:
             # 跳过水印区域（顶部6%行数）
             watermark_skip_rows = int(height * 0.06)
             start_row = watermark_skip_rows
-            end_row = height
-            usable_rows = max(0, end_row - start_row)
-            total_capacity_bits = usable_rows * width * channels * bits_per_channel
             print(f"[V2][ENC] 多文件打包模式：跳过水印区域 {watermark_skip_rows} 行，从第 {start_row} 行开始写入")
         else:
             # 不跳过水印区域，从顶部开始写入
             start_row = 0
-            end_row = height
-            total_capacity_bits = height * width * channels * bits_per_channel
             print(f"[V2][ENC] 多文件打包模式：不跳过水印区域，从0字节开始写入")
         
-        if len(full_binary) > total_capacity_bits:
-            # 理论上不会发生，因为尺寸已按容量计算
-            raise ValueError("容量计算不足，无法写入全部数据")
-
-        bit_index = 0
-        mask = (1 << bits_per_channel) - 1
-        clear_mask = 0xFF ^ mask  # 清除最低 bits_per_channel 位
-
-        for i in range(start_row, end_row):
-            for j in range(width):
-                for c in range(channels):
-                    if bit_index >= len(full_binary):
-                        break
-                    # 取接下来 bits_per_channel 位，不足则右侧用0补齐
-                    remaining = len(full_binary) - bit_index
-                    take = min(bits_per_channel, remaining)
-                    chunk = full_binary[bit_index:bit_index + take]
-                    if take < bits_per_channel:
-                        chunk = chunk + '0' * (bits_per_channel - take)
-                    value = int(chunk, 2) & mask
-
-                    original = embedded[i, j, c]
-                    embedded[i, j, c] = (original & clear_mask) | value
-
-                    bit_index += take
-                if bit_index >= len(full_binary):
-                    break
-            if bit_index >= len(full_binary):
+        # 实现行首对齐的多文件写入逻辑
+        current_row = start_row
+        current_col = 0
+        data_index = 0
+        
+        print(f"[V2][ENC] 开始行首对齐的多文件写入，起始行: {start_row}")
+        
+        while data_index < len(data_bytes) and current_row < height:
+            # 确保当前文件从行首开始
+            if current_col != 0:
+                # 如果不在行首，跳到下一行的行首
+                current_row += 1
+                current_col = 0
+                print(f"[V2][ENC] 跳到下一行行首，当前行: {current_row}")
+            
+            if current_row >= height:
                 break
-
+                
+            # 计算当前行能写入的字节数（每像素3个通道）
+            remaining_bytes_in_row = (width - current_col) * 3
+            bytes_to_write = min(len(data_bytes) - data_index, remaining_bytes_in_row)
+            
+            print(f"[V2][ENC] 在第 {current_row} 行写入 {bytes_to_write} 字节，从列 {current_col} 开始")
+            
+            # 写入当前行的数据
+            for i in range(bytes_to_write):
+                if data_index >= len(data_bytes):
+                    break
+                    
+                # 计算像素位置和通道
+                pixel_col = current_col + (i // 3)
+                channel = i % 3
+                
+                if pixel_col < width:
+                    embedded[current_row, pixel_col, channel] = data_bytes[data_index]
+                
+                data_index += 1
+            
+            # 更新列位置
+            current_col += (bytes_to_write + 2) // 3  # 向上取整
+            
+            # 如果当前行写满了，跳到下一行
+            if current_col >= width:
+                current_row += 1
+                current_col = 0
+        
+        print(f"[V2][ENC] 多文件数据包写入完成，总共使用行数: {current_row - start_row + 1}")
+        
         # 根据skip_watermark_area配置决定是否填充随机噪声
         if skip_watermark_area and start_row > 0:
             # 跳过水印区域时，将顶部留空区域填充为随机噪声（提升PNG压缩率）
             rng = np.random.default_rng()
-            noise_top = rng.integers(0, 256, size=(start_row, width, channels), dtype=np.uint8)
+            noise_top = rng.integers(0, 256, size=(start_row, width, 3), dtype=np.uint8)
             embedded[:start_row, :, :] = noise_top
             print(f"[V2][ENC] 多文件打包模式：已填充顶部 {start_row} 行随机噪声")
         else:
