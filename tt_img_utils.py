@@ -94,20 +94,12 @@ class TTImgUtils:
             
             # 使用FFmpeg管道（修复MP4兼容性问题）
             cmd = [
-                'ffmpeg', '-y',
-                '-f', 'rawvideo',           # 输入格式：原始视频
-                '-pix_fmt', 'rgb24',        # 输入像素格式：RGB24
-                '-s', f'{width}x{height}',   # 视频尺寸
+                'ffmpeg', '-y',                
                 '-r', str(fps),             # 帧率
                 '-i', 'pipe:0',             # 输入：管道
                 '-c:v', 'libx264',          # 视频编码器：H.264
                 '-crf', str(crf),           # 视频质量
-                '-preset', 'ultrafast',     # 编码预设：最快
-                '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）
-                '-profile:v', 'main' if crf == 0 else 'baseline',   # H.264配置文件：main用于无损，baseline用于有损
-                '-level', '3.0',            # H.264级别：3.0
-                '-movflags', '+faststart',  # MP4优化：快速启动
-                '-g', '10',                 # 关键帧间隔：10帧
+                '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）                
                 '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
                 '-color_range', 'tv',       # 颜色范围
                 '-colorspace', 'bt709',     # 颜色空间
@@ -134,17 +126,8 @@ class TTImgUtils:
     def _create_video_with_audio_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19, audio=None) -> str:
         """使用FFmpeg管道一步完成音视频合成（参考ComfyUI-VideoHelperSuite）"""
         try:
-            # 参考ComfyUI-VideoHelperSuite的音频处理方式
-            if not isinstance(audio, dict) or 'waveform' not in audio:
-                raise ValueError("音频格式不正确，需要包含'waveform'键")
-            
-            # 获取音频数据（参考VHS的处理方式）
-            audio_waveform = audio['waveform']
-            sample_rate = audio.get('sample_rate', 44100)
-            channels = audio_waveform.size(1)
-            
-            # 准备音频数据（参考VHS的处理方式）
-            audio_data = audio_waveform.squeeze(0).transpose(0, 1).numpy().tobytes()
+            # 处理音频输入（采用文件方式）
+            audio_path = self._process_audio_input(audio)
             
             # 准备图像数据
             frame_data = b''
@@ -171,49 +154,42 @@ class TTImgUtils:
                 frame_bytes = img_rgb.tobytes()
                 frame_data += frame_bytes
             
-            # 使用FFmpeg一步完成音视频合成（修复MP4兼容性问题）
+            # 使用FFmpeg完成音视频合成（严格按照经过测试的参数）
             cmd = [
-                'ffmpeg', '-y',
-                '-f', 'rawvideo',           # 输入格式：原始视频
-                '-pix_fmt', 'rgb24',        # 输入像素格式：RGB24
-                '-s', f'{width}x{height}',   # 视频尺寸
+                'ffmpeg', '-y',               
                 '-r', str(fps),             # 帧率
                 '-i', 'pipe:0',             # 视频输入：管道
-                '-ar', str(sample_rate),    # Audio sample rate
-                '-ac', str(channels),       # Audio channels
-                '-f', 'f32le',             # Audio format: float32 little-endian
-                '-i', 'pipe:3',            # Audio input: pipe (file descriptor 3)
-                '-c:v', 'libx264',          # 视频编码器：H.264
-                '-crf', str(crf),           # 视频质量
-                '-preset', 'ultrafast',     # 编码预设：最快
-                '-pix_fmt', 'yuv420p',      # 输出像素格式：YUV420P（MP4兼容）
-                '-profile:v', 'main' if crf == 0 else 'baseline',   # H.264配置文件：main用于无损，baseline用于有损
-                '-level', '3.0',            # H.264级别：3.0
-                '-movflags', '+faststart',  # MP4优化：快速启动
-                '-g', '10',                 # 关键帧间隔：10帧
+                '-i', audio_path,           # 音频输入：文件
+                '-c:v', 'libx264',          # 使用H.264编码器
+                '-pix_fmt', 'yuv420p',      # iPhone兼容的像素格式
+                '-crf', str(crf),           # 可配置压缩率
                 '-vf', 'scale=out_color_matrix=bt709',  # 视频滤镜：颜色矩阵转换
                 '-color_range', 'tv',       # 颜色范围
                 '-colorspace', 'bt709',     # 颜色空间
                 '-color_primaries', 'bt709', # 颜色原色
-                '-color_trc', 'bt709',      # 颜色传输特性
-                '-c:a', 'aac',              # 音频编码器：AAC
-                '-map', '0:v:0',            # 映射视频流
-                '-map', '1:a:0',            # 映射音频流
-                '-shortest',                # 以最短流为准
+                '-color_trc', 'bt709',      # 颜色传输特性                
                 output_path
             ]
             
-            # 执行FFmpeg命令（参考ComfyUI-VideoHelperSuite的方式）
-            try:
-                res = subprocess.run(cmd, input=frame_data, capture_output=True, check=True)
-            except subprocess.CalledProcessError as e:
-                raise Exception(f"FFmpeg音视频合成失败: {e.stderr.decode()}")
+            # 通过管道传递数据（参考ComfyUI-VideoHelperSuite的方式）
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate(input=frame_data)
             
-            return output_path
+            if process.returncode == 0:
+                # 清理临时音频文件
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+                return output_path
+            else:
+                print(f"FFmpeg音视频合成失败: {stderr.decode()}")
+                raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
                 
         except FileNotFoundError:
             raise RuntimeError("无法创建音视频：FFmpeg不可用")
         except Exception as e:
+            # 清理临时音频文件
+            if 'audio_path' in locals() and os.path.exists(audio_path):
+                os.remove(audio_path)
             raise RuntimeError(f"音视频合成失败: {e}")
 
     def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:

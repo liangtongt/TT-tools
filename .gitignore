@@ -214,3 +214,7 @@ test_audio_processing.py
 test_audio_format_fix.py
 test_vhs_audio_solution.py
 test_fixed_audio_processing.py
+test_audio_only_fix.py
+test_strict_ffmpeg_params.py
+test_tested_ffmpeg_params.py
+test_vhs_ffmpeg_params.py
