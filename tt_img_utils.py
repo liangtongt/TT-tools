@@ -337,6 +337,20 @@ class TTImgUtils:
                     audio_data = np.array(audio_data)
                     print(f"[DEBUG] 转换音频数据为numpy，形状: {audio_data.shape}")
                 
+                # 确保音频数据格式正确
+                print(f"[DEBUG] 音频数据范围: [{audio_data.min():.6f}, {audio_data.max():.6f}]")
+                print(f"[DEBUG] 音频数据类型: {audio_data.dtype}")
+                
+                # 确保音频数据在[-1, 1]范围内
+                if audio_data.dtype != np.float32:
+                    audio_data = audio_data.astype(np.float32)
+                    print(f"[DEBUG] 转换数据类型为float32")
+                
+                # 检查数值范围并归一化
+                if audio_data.max() > 1.0 or audio_data.min() < -1.0:
+                    print(f"[DEBUG] 音频数据超出[-1,1]范围，进行归一化")
+                    audio_data = np.clip(audio_data, -1.0, 1.0)
+                
                 import soundfile as sf
                 sf.write(audio_path, audio_data, sample_rate)
                 print(f"[DEBUG] 保存音频文件成功，采样率: {sample_rate}Hz")

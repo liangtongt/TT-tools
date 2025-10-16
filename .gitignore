@@ -211,3 +211,4 @@ test_fixed_pipe_method.py
 test_vhs_audio_format.py
 .gitignore
 test_audio_processing.py
+test_audio_format_fix.py
