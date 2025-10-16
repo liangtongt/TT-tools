@@ -41,7 +41,7 @@ class TTImgUtils:
                 return self._create_video_with_audio_pipe(resized_images, temp_path, fps, width, height, crf, audio)
             except Exception as e:
                 print(f"[FALLBACK] 音视频管道方法失败，回退到分离方法: {e}")
-                return self.images_to_mp4_with_audio(resized_images, fps, audio, crf)
+                return self._create_video_with_ffmpeg(resized_images, temp_path, fps, width, height, crf)
         else:
             # 无音频：只合成视频
             try:
@@ -132,10 +132,19 @@ class TTImgUtils:
             raise RuntimeError(f"视频创建失败: {e}")
 
     def _create_video_with_audio_pipe(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19, audio=None) -> str:
-        """使用FFmpeg管道一步完成音视频合成（类似ComfyUI-VideoHelperSuite）"""
+        """使用FFmpeg管道一步完成音视频合成（参考ComfyUI-VideoHelperSuite）"""
         try:
-            # 处理音频输入
-            audio_path = self._process_audio_input(audio)
+            # 参考ComfyUI-VideoHelperSuite的音频处理方式
+            if not isinstance(audio, dict) or 'waveform' not in audio:
+                raise ValueError("音频格式不正确，需要包含'waveform'键")
+            
+            # 获取音频数据（参考VHS的处理方式）
+            audio_waveform = audio['waveform']
+            sample_rate = audio.get('sample_rate', 44100)
+            channels = audio_waveform.size(1)
+            
+            # 准备音频数据（参考VHS的处理方式）
+            audio_data = audio_waveform.squeeze(0).transpose(0, 1).numpy().tobytes()
             
             # 准备图像数据
             frame_data = b''
@@ -170,7 +179,10 @@ class TTImgUtils:
                 '-s', f'{width}x{height}',   # 视频尺寸
                 '-r', str(fps),             # 帧率
                 '-i', 'pipe:0',             # 视频输入：管道
-                '-i', audio_path,           # 音频输入：文件
+                '-ar', str(sample_rate),    # Audio sample rate
+                '-ac', str(channels),       # Audio channels
+                '-f', 'f32le',             # Audio format: float32 little-endian
+                '-i', 'pipe:3',            # Audio input: pipe (file descriptor 3)
                 '-c:v', 'libx264',          # 视频编码器：H.264
                 '-crf', str(crf),           # 视频质量
                 '-preset', 'ultrafast',     # 编码预设：最快
@@ -191,27 +203,26 @@ class TTImgUtils:
                 output_path
             ]
             
-            # 通过管道传递数据
-            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate(input=frame_data)
+            # 执行FFmpeg命令（使用两个管道）
+            process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
             
-            if process.returncode == 0:
-                return output_path
-            else:
-                print(f"FFmpeg音视频合成失败: {stderr.decode()}")
-                raise RuntimeError(f"FFmpeg错误: {stderr.decode()}")
+            # 写入视频数据
+            process.stdin.write(frame_data)
+            process.stdin.close()
+            
+            # 等待完成
+            stderr = process.stderr.read()
+            process.wait()
+            
+            if process.returncode != 0:
+                raise Exception(f"FFmpeg音视频合成失败: {stderr.decode()}")
+            
+            return output_path
                 
         except FileNotFoundError:
             raise RuntimeError("无法创建音视频：FFmpeg不可用")
         except Exception as e:
             raise RuntimeError(f"音视频合成失败: {e}")
-        finally:
-            # 清理音频文件
-            try:
-                if 'audio_path' in locals() and os.path.exists(audio_path):
-                    os.remove(audio_path)
-            except Exception:
-                pass
 
     def _create_video_with_ffmpeg(self, images: List[np.ndarray], output_path: str, fps: float, width: int, height: int, crf: int = 19) -> str:
         """使用FFmpeg直接创建视频（备用方法）"""
