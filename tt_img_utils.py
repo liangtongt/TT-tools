@@ -293,15 +293,53 @@ class TTImgUtils:
                 return audio_path
             
             # 2. ComfyUI标准格式（最常见）
-            elif isinstance(audio, dict) and 'samples' in audio:
-                audio_data = audio['samples']
-                sample_rate = audio.get('sample_rate', 44100)
+            elif isinstance(audio, dict):
+                print(f"[DEBUG] 处理音频字典，键: {list(audio.keys())}")
                 
+                # 尝试多种可能的键名
+                audio_data = None
+                sample_rate = 44100
+                
+                # 查找音频数据（ComfyUI-VideoHelperSuite优先使用'waveform'）
+                for key in ['waveform', 'samples', 'data', 'audio', 'signal']:
+                    if key in audio:
+                        audio_data = audio[key]
+                        print(f"[DEBUG] 找到音频数据，键: {key}, 类型: {type(audio_data)}")
+                        break
+                
+                if audio_data is None:
+                    raise ValueError(f"音频字典中未找到音频数据，可用键: {list(audio.keys())}")
+                
+                # 获取采样率
+                for key in ['sample_rate', 'sr', 'rate', 'fps']:
+                    if key in audio:
+                        sample_rate = audio[key]
+                        print(f"[DEBUG] 找到采样率，键: {key}, 值: {sample_rate}")
+                        break
+                
+                # 转换音频数据（参考ComfyUI-VideoHelperSuite的处理方式）
                 if hasattr(audio_data, 'cpu'):
+                    # torch张量：需要squeeze和transpose
                     audio_data = audio_data.cpu().numpy()
+                    print(f"[DEBUG] 转换torch张量为numpy，原始形状: {audio_data.shape}")
+                    
+                    # 如果是3D张量，需要squeeze(0)和transpose
+                    if len(audio_data.shape) == 3:
+                        audio_data = audio_data.squeeze(0).transpose(0, 1)
+                        print(f"[DEBUG] 调整torch张量形状: {audio_data.shape}")
+                    elif len(audio_data.shape) == 2:
+                        # 2D张量，可能需要transpose
+                        if audio_data.shape[0] < audio_data.shape[1]:
+                            audio_data = audio_data.transpose(0, 1)
+                        print(f"[DEBUG] 调整2D张量形状: {audio_data.shape}")
+                        
+                elif not isinstance(audio_data, np.ndarray):
+                    audio_data = np.array(audio_data)
+                    print(f"[DEBUG] 转换音频数据为numpy，形状: {audio_data.shape}")
                 
                 import soundfile as sf
                 sf.write(audio_path, audio_data, sample_rate)
+                print(f"[DEBUG] 保存音频文件成功，采样率: {sample_rate}Hz")
                 return audio_path
             
             # 3. LazyAudioMap（ComfyUI-VideoHelperSuite格式）
@@ -328,6 +366,7 @@ class TTImgUtils:
                 raise ValueError(f"不支持的音频格式: {type(audio)}，支持的格式：str, dict, np.ndarray, torch.Tensor")
                 
         except Exception as e:
+            print(f"[ERROR] 音频处理详细错误: {e}")
             raise RuntimeError(f"音频处理失败: {e}")
     
     def _merge_audio_video(self, video_path: str, audio_path: str, output_path: str):

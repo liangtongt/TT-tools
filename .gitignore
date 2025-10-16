@@ -208,3 +208,6 @@ test_pipe_method.py
 test_unified_method.py
 test_file_method.py
 test_fixed_pipe_method.py
+test_vhs_audio_format.py
+.gitignore
+test_audio_processing.py
