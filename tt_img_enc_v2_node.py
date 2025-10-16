@@ -163,19 +163,55 @@ class TTImgEncV2Node:
         return img
 
     def _create_storage_image_in_memory_v2(self, file_path: str, file_extension: str, bits_per_channel: int, skip_watermark_area: bool) -> np.ndarray:
+        """
+        为单文件创建存储图片，使用RGB字节流直接写入方式
+        与多文件打包保持一致的写入方式
+        """
         with open(file_path, 'rb') as f:
             file_data = f.read()
 
         file_header = self._create_file_header(file_data, file_extension, skip_watermark_area)
 
-        # 计算最小尺寸（考虑整幅或中间60%可用区域），使用RGB 3通道
-        side = self._calculate_required_image_size_v2(file_header, bits_per_channel, skip_watermark_area)
+        print(f"[V2][ENC] 创建单文件存储图片，文件头大小: {len(file_header)} 字节")
+        
+        # 计算最小尺寸，使用RGB字节流方式（每像素3字节）
+        bytes_needed = len(file_header)
+        
+        # 每像素可用字节数：3 通道(RGB)
+        bytes_per_pixel = 3
+        
+        # 根据skip_watermark_area配置计算容量
+        if skip_watermark_area:
+            # 跳过水印区域时，需要考虑可用区域
+            # 连续近似：仅跳过顶部6%，usable ≈ 0.94 * S^2
+            side0 = int(np.ceil(np.sqrt(bytes_needed / float(bytes_per_pixel * 0.94))))
+            side_length = max(64, side0)
+            side_length = ((side_length + 3) // 4) * 4
+            # 离散校验
+            while True:
+                top_skip = int(np.floor(side_length * 0.06))
+                bottom_skip = 0
+                available_height = side_length - top_skip - bottom_skip
+                available_pixels = max(0, available_height) * side_length
+                available_bytes = available_pixels * bytes_per_pixel
+                if available_bytes >= bytes_needed:
+                    break
+                side_length += 4
+            print(f"[V2][ENC] 单文件模式：跳过水印区域，计算所需图片尺寸: {side_length}x{side_length}")
+        else:
+            # 不跳过水印区域时，使用整张图片的容量
+            required_pixels = int(np.ceil(bytes_needed / float(bytes_per_pixel)))
+            side_length = int(np.ceil(np.sqrt(required_pixels)))
+            side_length = max(64, side_length)
+            side_length = ((side_length + 3) // 4) * 4
+            print(f"[V2][ENC] 单文件模式：不跳过水印区域，使用整张图片容量，计算所需图片尺寸: {side_length}x{side_length}")
 
         # 生成纯色画布 RGB（中性灰）
-        image = np.ones((side, side, 3), dtype=np.uint8) * 128
+        image = np.ones((side_length, side_length, 3), dtype=np.uint8) * 128
+        print(f"[V2][ENC] 创建画布完成，尺寸: {image.shape}")
 
-        # 嵌入数据
-        embedded = self._embed_data_multi_bit(image, file_header, bits_per_channel, skip_watermark_area)
+        # 使用RGB字节流直接写入方式（与多文件保持一致）
+        embedded = self._embed_data_multi_bit_direct(image, file_header, bits_per_channel, skip_watermark_area)
         return embedded
 
     def _calculate_required_image_size_v2(self, data: bytes, bits_per_channel: int, skip_watermark_area: bool) -> int:
