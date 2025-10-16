@@ -202,3 +202,4 @@ test_multi_file_no_skip.png
 test_rgb_no_skip.png
 test_rgb_simple.png
 test_rgb_with_skip.png
+test_multi_file_watermark.py
