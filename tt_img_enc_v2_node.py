@@ -394,14 +394,31 @@ class TTImgEncV2Node:
         # 每像素可用位数：3 通道(RGB) * bits_per_channel
         capacity_per_pixel = 3 * bits_per_channel
         
-        # 修改：多文件打包时忽略水印区域，使用整张图片的容量
-        # 无论skip_watermark_area设置如何，多文件打包都使用整张图片
-        required_pixels = int(np.ceil(bits_needed / float(capacity_per_pixel)))
-        side_length = int(np.ceil(np.sqrt(required_pixels)))
-        side_length = max(64, side_length)
-        side_length = ((side_length + 3) // 4) * 4
-        
-        print(f"[V2][ENC] 多文件打包模式：使用整张图片容量，计算所需图片尺寸: {side_length}x{side_length}")
+        # 修改：多文件打包时根据skip_watermark_area配置计算容量
+        if skip_watermark_area:
+            # 跳过水印区域时，需要考虑可用区域
+            # 连续近似：仅跳过顶部6%，usable ≈ 0.94 * S^2
+            side0 = int(np.ceil(np.sqrt(bits_needed / float(capacity_per_pixel * 0.94))))
+            side_length = max(64, side0)
+            side_length = ((side_length + 3) // 4) * 4
+            # 离散校验
+            while True:
+                top_skip = int(np.floor(side_length * 0.06))
+                bottom_skip = 0
+                available_height = side_length - top_skip - bottom_skip
+                available_pixels = max(0, available_height) * side_length
+                available_bits = available_pixels * capacity_per_pixel
+                if available_bits >= bits_needed:
+                    break
+                side_length += 4
+            print(f"[V2][ENC] 多文件打包模式：跳过水印区域，计算所需图片尺寸: {side_length}x{side_length}")
+        else:
+            # 不跳过水印区域时，使用整张图片的容量
+            required_pixels = int(np.ceil(bits_needed / float(capacity_per_pixel)))
+            side_length = int(np.ceil(np.sqrt(required_pixels)))
+            side_length = max(64, side_length)
+            side_length = ((side_length + 3) // 4) * 4
+            print(f"[V2][ENC] 多文件打包模式：不跳过水印区域，使用整张图片容量，计算所需图片尺寸: {side_length}x{side_length}")
 
         # 生成纯色画布 RGB（中性灰）
         image = np.ones((side_length, side_length, 3), dtype=np.uint8) * 128
@@ -468,12 +485,21 @@ class TTImgEncV2Node:
 
         channels = embedded.shape[2]
         
-        # 修改：多文件打包时忽略水印区域，直接从0字节开始
-        # 无论skip_watermark_area设置如何，多文件打包都从顶部开始写入
-        start_row = 0
-        end_row = height
-        total_capacity_bits = height * width * channels * bits_per_channel
-        print(f"[V2][ENC] 多文件打包模式：忽略水印区域，从0字节开始写入")
+        # 修改：多文件打包时根据skip_watermark_area配置决定是否跳过水印区域
+        if skip_watermark_area:
+            # 跳过水印区域（顶部6%行数）
+            watermark_skip_rows = int(height * 0.06)
+            start_row = watermark_skip_rows
+            end_row = height
+            usable_rows = max(0, end_row - start_row)
+            total_capacity_bits = usable_rows * width * channels * bits_per_channel
+            print(f"[V2][ENC] 多文件打包模式：跳过水印区域 {watermark_skip_rows} 行，从第 {start_row} 行开始写入")
+        else:
+            # 不跳过水印区域，从顶部开始写入
+            start_row = 0
+            end_row = height
+            total_capacity_bits = height * width * channels * bits_per_channel
+            print(f"[V2][ENC] 多文件打包模式：不跳过水印区域，从0字节开始写入")
         
         if len(full_binary) > total_capacity_bits:
             # 理论上不会发生，因为尺寸已按容量计算
@@ -505,9 +531,15 @@ class TTImgEncV2Node:
             if bit_index >= len(full_binary):
                 break
 
-        # 多文件打包时不需要填充随机噪声，因为数据从顶部开始写入
-        # 保持原有的中性灰背景即可
-        print(f"[V2][ENC] 多文件打包模式：数据已从顶部开始写入，无需填充噪声")
+        # 根据skip_watermark_area配置决定是否填充随机噪声
+        if skip_watermark_area and start_row > 0:
+            # 跳过水印区域时，将顶部留空区域填充为随机噪声（提升PNG压缩率）
+            rng = np.random.default_rng()
+            noise_top = rng.integers(0, 256, size=(start_row, width, channels), dtype=np.uint8)
+            embedded[:start_row, :, :] = noise_top
+            print(f"[V2][ENC] 多文件打包模式：已填充顶部 {start_row} 行随机噪声")
+        else:
+            print(f"[V2][ENC] 多文件打包模式：保持原有背景，无需填充噪声")
 
         return embedded
 
