@@ -1,0 +1,61 @@
+name: Sync from Gitee (Public)   # 每天北京时间 08:00 触发
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  sync-repo:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 浅克隆 GitHub 仓库（深度=1）
+      - name: Checkout GitHub repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 1          # 只要最新 1 次提交
+          ref: ${{ github.ref }}
+
+      # 2. 备份当前 Action 文件（同上）
+      - name: Backup GitHub Actions
+        run: |
+          mkdir -p /tmp/backup_workflows
+          cp -a .github/workflows/* /tmp/backup_workflows/ 2>/dev/null || true
+
+      # 3. 配置 Git 身份
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@users.noreply.github.com"
+
+      # 4. 添加 Gitee 远程并浅拉取（深度=1）
+      - name: Add Gitee remote and shallow fetch
+        run: |
+          git remote add gitee https://gitee.com/zhigan/tt_img.git
+          git fetch gitee ${{ github.ref_name }} --depth=1   # 只拉对应分支最新 1 次
+
+      # 5. 同步当前分支（保留 Action 文件）
+      - name: Sync current branch
+        run: |
+          # 重置到 Gitee 最新提交
+          git reset --hard gitee/${{ github.ref_name }}
+
+          # 还原 Action 文件
+          mkdir -p .github/workflows
+          cp -a /tmp/backup_workflows/* .github/workflows/ 2>/dev/null || true
+
+          # 如有变化则提交
+          git add -A
+          if ! git diff-index --quiet HEAD --; then
+            git commit -m "chore: restore GitHub Actions after sync"
+          fi
+
+          # 浅推（force 即可，Git 会自动形成新的浅根）
+          git push --force origin HEAD:${{ github.ref_name }}
+
+      # 6. 如需同步其它分支，可继续循环浅拉/浅推
+      # 7. 清理
+      - name: Clean up
+        run: |
+          git remote remove gitee
+          rm -rf /tmp/backup_workflows
